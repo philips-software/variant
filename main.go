@@ -34,16 +34,16 @@ func main() {
 	}
 	done := make(chan bool)
 
-	go timekeeper(done, timeline)
+	go timekeeper(5, timeline, done)
 
 	e := echo.New()
 	e.GET("/prometheus", prometheusHandler(timeline))
 
-	e.Start(":8080")
+	_ = e.Start(":8080")
 }
 
-func timekeeper(done <-chan bool, timeline *tva.Timeline) {
-	ticker := time.NewTicker(15 * time.Second)
+func timekeeper(tick time.Duration, timeline *tva.Timeline, done <-chan bool) {
+	ticker := time.NewTicker(tick * time.Second)
 	for {
 		select {
 		case <-done:
@@ -51,7 +51,7 @@ func timekeeper(done <-chan bool, timeline *tva.Timeline) {
 			return
 		case <-ticker.C:
 			fmt.Printf("reconciling timeline\n")
-			timeline.Reconcile()
+			_ = timeline.Reconcile()
 		}
 	}
 }
@@ -63,7 +63,6 @@ func prometheusHandler(timeline *tva.Timeline) echo.HandlerFunc {
 		timeline.Lock()
 		defer timeline.Unlock()
 		// Do stuff
-		c.JSON(http.StatusOK, results)
-		return nil
+		return c.JSON(http.StatusOK, results)
 	}
 }

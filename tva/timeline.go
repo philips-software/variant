@@ -14,6 +14,19 @@ import (
 	clients "github.com/cloudfoundry-community/go-cf-clients-helper"
 )
 
+const (
+	appMetadata metadataType = "apps"
+)
+
+type Timeline struct {
+	sync.Mutex
+	*clients.Session
+	ThanosID   string
+	Targets    []string
+	Selectors  []string
+	startState []cfnetv1.Policy
+}
+
 func NewTimeline(thanosID string, selectors []string, config clients.Config) (*Timeline, error) {
 	session, err := clients.NewSession(config)
 	if err != nil {
@@ -28,16 +41,10 @@ func NewTimeline(thanosID string, selectors []string, config clients.Config) (*T
 	return timeline, nil
 }
 
-type Timeline struct {
-	sync.Mutex
-	*clients.Session
-	ThanosID   string
-	Targets    []string
-	Selectors  []string
-	startState []cfnetv1.Policy
-}
-
 func (t *Timeline) Reconcile() error {
+	t.Lock()
+	defer t.Unlock()
+
 	// Retrieve all relevant apps
 	apps, _, err := t.V3().GetApplications(ccv3.Query{
 		Key:    "label_selector",
@@ -47,16 +54,20 @@ func (t *Timeline) Reconcile() error {
 		return err
 	}
 	fmt.Printf("found %d matching selectors\n", len(apps))
-	// Calculate all required policies
+
+	// Determine the desired state
 	var generatedPolicies []cfnetv1.Policy
 	for _, app := range apps {
-		policies, _ := t.GeneratePolicies(app)
+		// Erase an app from startTime if it show up on the timeline
+		t.startState = prunePoliciesByDestination(t.startState, app.GUID)
+		policies, _ := t.generatePolicies(app)
 		generatedPolicies = append(generatedPolicies, policies...)
 	}
-	desiredState := append(t.startState, generatedPolicies...)
+	desiredState := uniqPolicies(append(t.startState, generatedPolicies...))
 	currentState := t.getCurrentPolicies()
 	fmt.Printf("desired: %d, current: %d\n", len(desiredState), len(currentState))
-	// Calculate diff
+
+	// Calculate add/prune
 	var toAdd []cfnetv1.Policy
 	for _, p := range desiredState {
 		found := false
@@ -81,33 +92,16 @@ func (t *Timeline) Reconcile() error {
 			toPrune = append(toPrune, p)
 		}
 	}
+
+	// Do it
 	fmt.Printf("adding: %d\n", len(toAdd))
 	fmt.Printf("removing: %d\n", len(toPrune))
-	t.Networking().RemovePolicies(toPrune)
-	t.Networking().CreatePolicies(toAdd)
+	_ = t.Networking().RemovePolicies(toPrune)
+	_ = t.Networking().CreatePolicies(toAdd)
 	return nil
 }
 
-func policyEqual(a, b cfnetv1.Policy) bool {
-	if a.Source.ID != b.Source.ID {
-		return false
-	}
-	if a.Destination.Protocol != b.Destination.Protocol {
-		return false
-	}
-	if a.Destination.ID != b.Destination.ID {
-		return false
-	}
-	if a.Destination.Ports.Start != b.Destination.Ports.Start {
-		return false
-	}
-	if a.Destination.Ports.End != b.Destination.Ports.End {
-		return false
-	}
-	return true
-}
-
-func (t *Timeline) GeneratePolicies(app resources.Application) ([]cfnetv1.Policy, error) {
+func (t *Timeline) generatePolicies(app resources.Application) ([]cfnetv1.Policy, error) {
 	var policies []cfnetv1.Policy
 
 	metadata, err := t.metadataRetrieve(appMetadata, app.GUID)
@@ -146,19 +140,6 @@ func (t *Timeline) newPolicy(destination string, port int) cfnetv1.Policy {
 		},
 	}
 }
-
-const (
-	labelsKey      = "labels"
-	annotationsKey = "annotations"
-
-	orgMetadata           metadataType = "organizations"
-	spaceMetadata         metadataType = "spaces"
-	buildpackMetadata     metadataType = "buildpacks"
-	appMetadata           metadataType = "apps"
-	stackMetadata         metadataType = "stacks"
-	segmentMetadata       metadataType = "isolation_segments"
-	serviceBrokerMetadata metadataType = "service_brokers"
-)
 
 func pathMetadata(m metadataType, guid string) string {
 	return fmt.Sprintf("/v3/%s/%s", m, guid)
