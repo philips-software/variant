@@ -29,7 +29,7 @@ jobs:
           password: ${{ secrets.HSDP_DOCKER_PASSWORD }}
       - uses: actions/checkout@v2
       -
-        name: Build and push sd
+        name: Build and push
         uses: docker/build-push-action@v2
         with:
           context: ./
