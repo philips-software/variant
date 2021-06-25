@@ -1,5 +1,5 @@
 # Variant
-Helps [Thanos](https://github.com/philips-labs/terraform-cloudfoundry-thanos) reach out to CF resources for scraiping
+Helps [Thanos](https://github.com/philips-labs/terraform-cloudfoundry-thanos) reach out to CF resources for scraping
 
 # How
 We'll leverage metadata (labels, annotations) resource enrichment of the Cloud foundry platform to implement 
