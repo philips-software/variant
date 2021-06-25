@@ -41,6 +41,7 @@ func NewTimeline(thanosID string, selectors []string, config clients.Config) (*T
 	return timeline, nil
 }
 
+// Reconcile manages the network-polices
 func (t *Timeline) Reconcile() error {
 	t.Lock()
 	defer t.Unlock()
