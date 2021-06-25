@@ -18,6 +18,7 @@ type SDConfig struct {
 
 func main() {
 	viper.SetEnvPrefix("")
+	viper.SetDefault("port", "8080")
 	viper.AutomaticEnv()
 
 	thanosID := viper.GetString("thanos_id")
@@ -39,7 +40,9 @@ func main() {
 	e := echo.New()
 	e.GET("/prometheus", prometheusHandler(timeline))
 
-	_ = e.Start(":8080")
+	port := viper.GetString("port")
+
+	_ = e.Start(fmt.Sprintf(":%s", port))
 }
 
 func timekeeper(tick time.Duration, timeline *tva.Timeline, done <-chan bool) {
