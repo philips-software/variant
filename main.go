@@ -1,8 +1,12 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
+	"os"
 	"time"
 	"timekeeper/tva"
 
@@ -16,19 +20,56 @@ type SDConfig struct {
 	Labels  map[string]string `json:"labels"`
 }
 
+type VCAPApplication struct {
+	CfAPI  string `json:"cf_api"`
+	Limits struct {
+		Fds  int `json:"fds"`
+		Mem  int `json:"mem"`
+		Disk int `json:"disk"`
+	} `json:"limits"`
+	ApplicationName    string   `json:"application_name"`
+	ApplicationUris    []string `json:"application_uris"`
+	Name               string   `json:"name"`
+	SpaceName          string   `json:"space_name"`
+	SpaceID            string   `json:"space_id"`
+	OrganizationID     string   `json:"organization_id"`
+	OrganizationName   string   `json:"organization_name"`
+	Uris               []string `json:"uris"`
+	ProcessID          string   `json:"process_id"`
+	ProcessType        string   `json:"process_type"`
+	ApplicationID      string   `json:"application_id"`
+	Version            string   `json:"version"`
+	ApplicationVersion string   `json:"application_version"`
+}
+
 func main() {
-	viper.SetEnvPrefix("")
-	viper.SetDefault("port", "8080")
+	var vcapApplication VCAPApplication
+
+	viper.SetEnvPrefix("variant")
+	viper.SetDefault("port", "6633")
 	viper.AutomaticEnv()
 
-	thanosID := viper.GetString("thanos_id")
-	config := clients.Config{
-		Endpoint: viper.GetString("api_endpoint"),
-		User:     viper.GetString("username"),
-		Password: viper.GetString("password"),
+	vcap := json.NewDecoder(bytes.NewBufferString(os.Getenv("VCAP_APPLICATION")))
+	if err := vcap.Decode(&vcapApplication); err != nil {
+		fmt.Printf("WARNING: not running in CF. ThanosID will be missing!\n")
 	}
-	selectors := []string{"prometheus.io/exporter=true"}
-	timeline, err := tva.NewTimeline(thanosID, selectors, config)
+
+	internalDomainID := viper.GetString("internal_domain_id")
+	prometheusConfig := viper.GetString("prometheus_config")
+
+	config := tva.Config{
+		Config: clients.Config{
+			Endpoint: viper.GetString("api_endpoint"),
+			User:     viper.GetString("username"),
+			Password: viper.GetString("password"),
+		},
+		PrometheusConfig: prometheusConfig,
+		InternalDomainID: internalDomainID,
+		ThanosID:         vcapApplication.ApplicationID,
+	}
+
+	selectors := []string{"variant.tva/exporter=true"}
+	timeline, err := tva.NewTimeline(config, selectors)
 	if err != nil {
 		fmt.Printf("error: %v\n", err)
 		return
@@ -42,7 +83,7 @@ func main() {
 
 	port := viper.GetString("port")
 
-	_ = e.Start(fmt.Sprintf(":%s", port))
+	log.Fatal(e.Start(fmt.Sprintf(":%s", port)))
 }
 
 func timekeeper(tick time.Duration, timeline *tva.Timeline, done <-chan bool) {
@@ -60,12 +101,12 @@ func timekeeper(tick time.Duration, timeline *tva.Timeline, done <-chan bool) {
 }
 
 func prometheusHandler(timeline *tva.Timeline) echo.HandlerFunc {
-	var results []SDConfig
 
 	return func(c echo.Context) error {
+		var results []SDConfig
+
 		timeline.Lock()
 		defer timeline.Unlock()
-		// Do stuff
 		return c.JSON(http.StatusOK, results)
 	}
 }

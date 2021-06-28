@@ -18,24 +18,41 @@ const (
 	appMetadata metadataType = "apps"
 )
 
+type Config struct {
+	clients.Config
+	PrometheusConfig string
+	InternalDomainID string
+	ThanosID         string
+}
+
 type Timeline struct {
 	sync.Mutex
 	*clients.Session
-	ThanosID   string
-	Targets    []string
-	Selectors  []string
-	startState []cfnetv1.Policy
+	ThanosID         string
+	InternalDomainID string
+	targets          []ScrapeEndpoint
+	Selectors        []string
+	startState       []cfnetv1.Policy
+	config           Config
 }
 
-func NewTimeline(thanosID string, selectors []string, config clients.Config) (*Timeline, error) {
-	session, err := clients.NewSession(config)
+type ScrapeEndpoint struct {
+	ID   string `json:"id"`
+	Port int    `json:"port"`
+	Host string `json:"host"`
+	Path string `json:"path,omitempty"`
+	Name string `json:"name,omitempty"`
+}
+
+func NewTimeline(config Config, selectors []string) (*Timeline, error) {
+	session, err := clients.NewSession(config.Config)
 	if err != nil {
 		return nil, fmt.Errorf("NewTimeline: %w", err)
 	}
 	timeline := &Timeline{
 		Session:   session,
-		ThanosID:  thanosID,
 		Selectors: selectors,
+		config:    config,
 	}
 	timeline.startState = timeline.getCurrentPolicies()
 	return timeline, nil
@@ -57,12 +74,14 @@ func (t *Timeline) Reconcile() error {
 	fmt.Printf("found %d matching selectors\n", len(apps))
 
 	// Determine the desired state
+	var targets []ScrapeEndpoint
 	var generatedPolicies []cfnetv1.Policy
 	for _, app := range apps {
 		// Erase an app from startTime if it show up on the timeline
 		t.startState = prunePoliciesByDestination(t.startState, app.GUID)
-		policies, _ := t.generatePolicies(app)
+		policies, endpoints, _ := t.generatePoliciesAndEndpoints(app)
 		generatedPolicies = append(generatedPolicies, policies...)
+		targets = append(targets, endpoints...)
 	}
 	desiredState := uniqPolicies(append(t.startState, generatedPolicies...))
 	currentState := t.getCurrentPolicies()
@@ -99,31 +118,45 @@ func (t *Timeline) Reconcile() error {
 	fmt.Printf("removing: %d\n", len(toPrune))
 	_ = t.Networking().RemovePolicies(toPrune)
 	_ = t.Networking().CreatePolicies(toAdd)
+	t.targets = targets // Refresh the targets list
 	return nil
 }
 
-func (t *Timeline) generatePolicies(app resources.Application) ([]cfnetv1.Policy, error) {
+func (t *Timeline) Targets() []ScrapeEndpoint {
+	t.Lock()
+	targets := t.targets
+	defer t.Unlock()
+	return targets
+}
+
+func (t *Timeline) generatePoliciesAndEndpoints(app resources.Application) ([]cfnetv1.Policy, []ScrapeEndpoint, error) {
 	var policies []cfnetv1.Policy
+	var endpoints []ScrapeEndpoint
 
 	metadata, err := t.metadataRetrieve(appMetadata, app.GUID)
 	if err != nil {
-		return policies, fmt.Errorf("metadataRetrieve: %w", err)
+		return policies, endpoints, fmt.Errorf("metadataRetrieve: %w", err)
 	}
 	if port := metadata.Annotations["prometheus.exporter.port"]; port != nil {
 		portNumber, err := strconv.Atoi(*port)
 		if err != nil {
-			return policies, err
+			return policies, endpoints, err
 		}
 		policies = append(policies, t.newPolicy(app.GUID, portNumber))
 	}
 	if port := metadata.Annotations["prometheus.discovery.port"]; port != nil {
 		portNumber, err := strconv.Atoi(*port)
 		if err != nil {
-			return policies, err
+			return policies, endpoints, err
 		}
 		policies = append(policies, t.newPolicy(app.GUID, portNumber))
+		endpoints = append(endpoints, ScrapeEndpoint{
+			Host: app.GUID,
+			Port: portNumber,
+			Path: "/targets", // Hardcoded for now
+		})
 	}
-	return policies, nil
+	return policies, endpoints, nil
 }
 
 func (t *Timeline) getCurrentPolicies() []cfnetv1.Policy {
@@ -144,6 +177,20 @@ func (t *Timeline) newPolicy(destination string, port int) cfnetv1.Policy {
 
 func pathMetadata(m metadataType, guid string) string {
 	return fmt.Sprintf("/v3/%s/%s", m, guid)
+}
+
+func (t *Timeline) internalHost(app resources.Application) (string, error) {
+	client := t.Session.V2()
+	routes, _, err := client.GetApplicationRoutes(app.GUID)
+	if err != nil {
+		return "", err
+	}
+	for _, r := range routes {
+		if r.DomainGUID == t.InternalDomainID {
+			return fmt.Sprintf("%s.%s", r.Host, "apps.internal"), nil
+		}
+	}
+	return "", fmt.Errorf("no apps.internal route found")
 }
 
 func (t *Timeline) metadataRetrieve(m metadataType, guid string) (Metadata, error) {
