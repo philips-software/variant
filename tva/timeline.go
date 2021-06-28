@@ -28,12 +28,10 @@ type Config struct {
 type Timeline struct {
 	sync.Mutex
 	*clients.Session
-	ThanosID         string
-	InternalDomainID string
-	targets          []ScrapeEndpoint
-	Selectors        []string
-	startState       []cfnetv1.Policy
-	config           Config
+	targets    []ScrapeEndpoint
+	Selectors  []string
+	startState []cfnetv1.Policy
+	config     Config
 }
 
 type ScrapeEndpoint struct {
@@ -116,7 +114,7 @@ func (t *Timeline) Reconcile() error {
 	// Do it
 	fmt.Printf("adding: %d\n", len(toAdd))
 	fmt.Printf("removing: %d\n", len(toPrune))
-	if err := t.Networking().RemovePolicies(toPrune); err != nil {
+	if err := t.Networking().RemovePolicies(toPrune); len(toPrune) > 0 && err != nil {
 		fmt.Printf("error removing: %v\n", err)
 	}
 	if err := t.Networking().CreatePolicies(toAdd); err != nil {
@@ -164,13 +162,13 @@ func (t *Timeline) generatePoliciesAndEndpoints(app resources.Application) ([]cf
 }
 
 func (t *Timeline) getCurrentPolicies() []cfnetv1.Policy {
-	policies, _ := t.Networking().ListPolicies(t.ThanosID)
+	policies, _ := t.Networking().ListPolicies(t.config.ThanosID)
 	return policies
 }
 
 func (t *Timeline) newPolicy(destination string, port int) cfnetv1.Policy {
 	return cfnetv1.Policy{
-		Source: cfnetv1.PolicySource{ID: t.ThanosID},
+		Source: cfnetv1.PolicySource{ID: t.config.ThanosID},
 		Destination: cfnetv1.PolicyDestination{
 			ID:       destination,
 			Protocol: cfnetv1.PolicyProtocolTCP,
@@ -190,7 +188,7 @@ func (t *Timeline) internalHost(app resources.Application) (string, error) {
 		return "", err
 	}
 	for _, r := range routes {
-		if r.DomainGUID == t.InternalDomainID {
+		if r.DomainGUID == t.config.InternalDomainID {
 			return fmt.Sprintf("%s.%s", r.Host, "apps.internal"), nil
 		}
 	}
