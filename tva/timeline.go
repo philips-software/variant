@@ -116,8 +116,12 @@ func (t *Timeline) Reconcile() error {
 	// Do it
 	fmt.Printf("adding: %d\n", len(toAdd))
 	fmt.Printf("removing: %d\n", len(toPrune))
-	_ = t.Networking().RemovePolicies(toPrune)
-	_ = t.Networking().CreatePolicies(toAdd)
+	if err := t.Networking().RemovePolicies(toPrune); err != nil {
+		fmt.Printf("error removing: %v\n", err)
+	}
+	if err := t.Networking().CreatePolicies(toAdd); err != nil {
+		fmt.Printf("error creating: %v\n", err)
+	}
 	t.targets = targets // Refresh the targets list
 	return nil
 }

@@ -49,10 +49,18 @@ func main() {
 	viper.SetDefault("port", "6633")
 	viper.AutomaticEnv()
 
-	vcap := json.NewDecoder(bytes.NewBufferString(os.Getenv("VCAP_APPLICATION")))
-	if err := vcap.Decode(&vcapApplication); err != nil {
-		fmt.Printf("WARNING: not running in CF. ThanosID will be missing!\n")
+	// Determine thanosID
+	thanosID := viper.GetString("thanos_id")
+	if thanosID == "" {
+		vcap := json.NewDecoder(bytes.NewBufferString(os.Getenv("VCAP_APPLICATION")))
+		if err := vcap.Decode(&vcapApplication); err != nil {
+			fmt.Printf("not running in CF and no thanosID found in ENV: %v\n", err)
+			return
+		} else {
+			thanosID = vcapApplication.ApplicationID
+		}
 	}
+	fmt.Printf("thanosID: %s\n", thanosID)
 
 	internalDomainID := viper.GetString("internal_domain_id")
 	prometheusConfig := viper.GetString("prometheus_config")
@@ -65,7 +73,7 @@ func main() {
 		},
 		PrometheusConfig: prometheusConfig,
 		InternalDomainID: internalDomainID,
-		ThanosID:         vcapApplication.ApplicationID,
+		ThanosID:         thanosID,
 	}
 
 	selectors := []string{"variant.tva/exporter=true"}
