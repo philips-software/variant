@@ -47,6 +47,7 @@ func main() {
 
 	viper.SetEnvPrefix("variant")
 	viper.SetDefault("port", "6633")
+	viper.SetDefault("thanos_url", "http://localhost:9090")
 	viper.AutomaticEnv()
 
 	// Determine thanosID
@@ -74,6 +75,7 @@ func main() {
 		PrometheusConfig: prometheusConfig,
 		InternalDomainID: internalDomainID,
 		ThanosID:         thanosID,
+		ThanosURL:        viper.GetString("thanos_url"),
 	}
 
 	selectors := []string{"variant.tva/exporter=true"}
@@ -103,7 +105,10 @@ func timekeeper(tick time.Duration, timeline *tva.Timeline, done <-chan bool) {
 			return
 		case <-ticker.C:
 			fmt.Printf("reconciling timeline\n")
-			_ = timeline.Reconcile()
+			err := timeline.Reconcile()
+			if err != nil {
+				fmt.Printf("error reconciling: %v\n", err)
+			}
 		}
 	}
 }

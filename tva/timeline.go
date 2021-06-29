@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"net/http"
 	"strconv"
 	"sync"
 
@@ -27,6 +28,7 @@ type Config struct {
 	PrometheusConfig string
 	InternalDomainID string
 	ThanosID         string
+	ThanosURL        string
 }
 
 type Timeline struct {
@@ -70,7 +72,20 @@ func NewTimeline(config Config, selectors []string) (*Timeline, error) {
 	return timeline, nil
 }
 
-// Reconcile manages the network-polices
+func (t *Timeline) saveAndReload(newConfig string) error {
+	if err := ioutil.WriteFile(t.config.PrometheusConfig, []byte(newConfig), 0644); err != nil {
+		return fmt.Errorf("save config: %w", err)
+	}
+	resp, err := http.Post(t.config.ThanosURL+"/-/reload", "application/json", nil)
+	if err != nil {
+		return fmt.Errorf("reload config: %w", err)
+	}
+	_, err = ioutil.ReadAll(resp.Body)
+	defer resp.Body.Close()
+	return err
+}
+
+// Reconcile calculates and applies network-polices and scrap configs
 func (t *Timeline) Reconcile() error {
 	t.Lock()
 	defer t.Unlock()
@@ -86,14 +101,15 @@ func (t *Timeline) Reconcile() error {
 	fmt.Printf("found %d matching selectors\n", len(apps))
 
 	// Determine the desired state
-	var targets []promconfig.ScrapeConfig
+	var configs []promconfig.ScrapeConfig
 	var generatedPolicies []cfnetv1.Policy
 	for _, app := range apps {
-		// Erase an app from startTime if it show up on the timeline
+		// Erase app from startTime if it show up on the timeline
 		t.startState = prunePoliciesByDestination(t.startState, app.GUID)
-		policies, endpoints, _ := t.generatePoliciesAndEndpoints(app)
+		// Calculate policies and scrape_config sections for app
+		policies, endpoints, _ := t.generatePoliciesAndScrapConfigs(app)
 		generatedPolicies = append(generatedPolicies, policies...)
-		targets = append(targets, endpoints...)
+		configs = append(configs, endpoints...)
 	}
 	desiredState := uniqPolicies(append(t.startState, generatedPolicies...))
 	currentState := t.getCurrentPolicies()
@@ -140,15 +156,20 @@ func (t *Timeline) Reconcile() error {
 			fmt.Printf("error creating: %v\n", err)
 		}
 	}
-	t.targets = targets // Refresh the targets list
+	t.targets = configs // Refresh the targets list
 
 	// Generate new config
 	newCfg, err := promconfig.Load(t.startConfig.String())
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
-	for _, endpoint := range targets {
-		newCfg.ScrapeConfigs = append(newCfg.ScrapeConfigs, &endpoint)
+	for _, cfg := range configs {
+		n := cfg
+		newCfg.ScrapeConfigs = append(newCfg.ScrapeConfigs, &n)
+	}
+	err = t.saveAndReload(newCfg.String())
+	if err != nil {
+		return err
 	}
 	fmt.Printf("---config start---\n%s\n---config end---\n", newCfg.String())
 	return nil
@@ -161,7 +182,7 @@ func (t *Timeline) Targets() []promconfig.ScrapeConfig {
 	return targets
 }
 
-func (t *Timeline) generatePoliciesAndEndpoints(app resources.Application) ([]cfnetv1.Policy, []promconfig.ScrapeConfig, error) {
+func (t *Timeline) generatePoliciesAndScrapConfigs(app resources.Application) ([]cfnetv1.Policy, []promconfig.ScrapeConfig, error) {
 	var policies []cfnetv1.Policy
 	var endpoints []promconfig.ScrapeConfig
 
