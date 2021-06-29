@@ -81,7 +81,7 @@ func (t *Timeline) saveAndReload(newConfig string) error {
 		return fmt.Errorf("reload config: %w", err)
 	}
 	_, err = ioutil.ReadAll(resp.Body)
-	defer resp.Body.Close()
+	_ = resp.Body.Close()
 	return err
 }
 
@@ -107,7 +107,7 @@ func (t *Timeline) Reconcile() error {
 		// Erase app from startTime if it show up on the timeline
 		t.startState = prunePoliciesByDestination(t.startState, app.GUID)
 		// Calculate policies and scrape_config sections for app
-		policies, endpoints, _ := t.generatePoliciesAndScrapConfigs(app)
+		policies, endpoints, _ := t.generatePoliciesAndScrapeConfigs(app)
 		generatedPolicies = append(generatedPolicies, policies...)
 		configs = append(configs, endpoints...)
 	}
@@ -182,7 +182,7 @@ func (t *Timeline) Targets() []promconfig.ScrapeConfig {
 	return targets
 }
 
-func (t *Timeline) generatePoliciesAndScrapConfigs(app resources.Application) ([]cfnetv1.Policy, []promconfig.ScrapeConfig, error) {
+func (t *Timeline) generatePoliciesAndScrapeConfigs(app resources.Application) ([]cfnetv1.Policy, []promconfig.ScrapeConfig, error) {
 	var policies []cfnetv1.Policy
 	var endpoints []promconfig.ScrapeConfig
 
