@@ -21,8 +21,8 @@ require (
 	github.com/hashicorp/go-msgpack v0.5.5 // indirect
 	github.com/labstack/echo/v4 v4.3.0
 	github.com/mattn/go-isatty v0.0.13 // indirect
-	github.com/prometheus/common v0.10.0
-	github.com/prometheus/prometheus v1.8.2-0.20200731171716-32c2d897ec3f
+	github.com/prometheus/common v0.11.1
+	github.com/prometheus/prometheus v1.8.2-0.20200811113340-ce838ad6fcbd
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/spf13/viper v1.8.0
 	golang.org/x/crypto v0.0.0-20210616213533-5ff15b29337e // indirect
