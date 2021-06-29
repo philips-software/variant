@@ -22,7 +22,7 @@ require (
 	github.com/labstack/echo/v4 v4.3.0
 	github.com/mattn/go-isatty v0.0.13 // indirect
 	github.com/prometheus/common v0.10.0
-	github.com/prometheus/prometheus v1.8.2-0.20200719205022-6da680c7e48f
+	github.com/prometheus/prometheus v1.8.2-0.20200731171716-32c2d897ec3f
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/spf13/viper v1.8.0
 	golang.org/x/crypto v0.0.0-20210616213533-5ff15b29337e // indirect
