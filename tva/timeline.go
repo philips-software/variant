@@ -13,10 +13,8 @@ import (
 	"code.cloudfoundry.org/cli/api/cloudcontroller/ccv3"
 	"code.cloudfoundry.org/cli/resources"
 	clients "github.com/cloudfoundry-community/go-cf-clients-helper"
-	"github.com/prometheus/common/model"
-	promconfig "github.com/prometheus/prometheus/config"
-	"github.com/prometheus/prometheus/discovery/config"
-	"github.com/prometheus/prometheus/discovery/targetgroup"
+	"github.com/percona/promconfig"
+	"gopkg.in/yaml.v2"
 )
 
 const (
@@ -37,7 +35,7 @@ type Timeline struct {
 	targets     []promconfig.ScrapeConfig
 	Selectors   []string
 	startState  []cfnetv1.Policy
-	startConfig *promconfig.Config
+	startConfig string
 	config      Config
 }
 
@@ -63,11 +61,14 @@ func NewTimeline(config Config, selectors []string) (*Timeline, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read promethues config: %w", err)
 	}
-	cfg, err := promconfig.Load(string(data))
+	var cfg promconfig.Config
+	err = yaml.Unmarshal(data, &cfg)
+
+	//cfg, err := promconfig.Load(string(data))
 	if err != nil {
 		return nil, fmt.Errorf("load prometheus config: %w", err)
 	}
-	timeline.startConfig = cfg
+	timeline.startConfig = string(data)
 	timeline.startState = timeline.getCurrentPolicies()
 	return timeline, nil
 }
@@ -81,7 +82,7 @@ func (t *Timeline) saveAndReload(newConfig string) error {
 		return fmt.Errorf("reload config: %w", err)
 	}
 	_, err = ioutil.ReadAll(resp.Body)
-	defer resp.Body.Close()
+	_ = resp.Body.Close()
 	return err
 }
 
@@ -107,7 +108,7 @@ func (t *Timeline) Reconcile() error {
 		// Erase app from startTime if it show up on the timeline
 		t.startState = prunePoliciesByDestination(t.startState, app.GUID)
 		// Calculate policies and scrape_config sections for app
-		policies, endpoints, _ := t.generatePoliciesAndScrapConfigs(app)
+		policies, endpoints, _ := t.generatePoliciesAndScrapeConfigs(app)
 		generatedPolicies = append(generatedPolicies, policies...)
 		configs = append(configs, endpoints...)
 	}
@@ -159,7 +160,9 @@ func (t *Timeline) Reconcile() error {
 	t.targets = configs // Refresh the targets list
 
 	// Generate new config
-	newCfg, err := promconfig.Load(t.startConfig.String())
+	var newCfg promconfig.Config
+
+	err = yaml.Unmarshal([]byte(t.startConfig), &newCfg)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
@@ -167,11 +170,15 @@ func (t *Timeline) Reconcile() error {
 		n := cfg
 		newCfg.ScrapeConfigs = append(newCfg.ScrapeConfigs, &n)
 	}
-	err = t.saveAndReload(newCfg.String())
+	output, err := yaml.Marshal(newCfg)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("---config start---\n%s\n---config end---\n", newCfg.String())
+	err = t.saveAndReload(string(output))
+	if err != nil {
+		return err
+	}
+	fmt.Printf("---config start---\n%s\n---config end---\n", string(output))
 	return nil
 }
 
@@ -182,7 +189,7 @@ func (t *Timeline) Targets() []promconfig.ScrapeConfig {
 	return targets
 }
 
-func (t *Timeline) generatePoliciesAndScrapConfigs(app resources.Application) ([]cfnetv1.Policy, []promconfig.ScrapeConfig, error) {
+func (t *Timeline) generatePoliciesAndScrapeConfigs(app resources.Application) ([]cfnetv1.Policy, []promconfig.ScrapeConfig, error) {
 	var policies []cfnetv1.Policy
 	var endpoints []promconfig.ScrapeConfig
 
@@ -205,11 +212,11 @@ func (t *Timeline) generatePoliciesAndScrapConfigs(app resources.Application) ([
 			HonorTimestamps: true,
 			Scheme:          "http",
 			MetricsPath:     "/metrics",
-			ServiceDiscoveryConfig: config.ServiceDiscoveryConfig{
-				StaticConfigs: []*targetgroup.Group{
+			ServiceDiscoveryConfig: promconfig.ServiceDiscoveryConfig{
+				StaticConfigs: []*promconfig.Group{
 					{
-						Targets: []model.LabelSet{
-							{"__address__": model.LabelValue(fmt.Sprintf("%s:%d", internalHost, portNumber))},
+						Targets: []string{
+							fmt.Sprintf("%s:%d", internalHost, portNumber),
 						},
 					},
 				},
