@@ -18,10 +18,11 @@ require (
 	github.com/cloudfoundry-community/go-cf-clients-helper v1.0.2
 	github.com/labstack/echo/v4 v4.3.0
 	github.com/mattn/go-isatty v0.0.13 // indirect
+	github.com/prometheus/common v0.7.0 // indirect
+	github.com/prometheus/prometheus v1.8.2-0.20191017095924-6f92ce560538
 	github.com/spf13/viper v1.8.0
 	golang.org/x/crypto v0.0.0-20210616213533-5ff15b29337e // indirect
 	golang.org/x/net v0.0.0-20210614182718-04defd469f4e // indirect
 	golang.org/x/sys v0.0.0-20210616094352-59db8d763f22 // indirect
 	google.golang.org/genproto v0.0.0-20210617175327-b9e0b3197ced // indirect
-	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
