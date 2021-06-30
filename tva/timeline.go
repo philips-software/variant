@@ -191,39 +191,76 @@ func (t *Timeline) Targets() []promconfig.ScrapeConfig {
 
 func (t *Timeline) generatePoliciesAndScrapeConfigs(app resources.Application) ([]cfnetv1.Policy, []promconfig.ScrapeConfig, error) {
 	var policies []cfnetv1.Policy
-	var endpoints []promconfig.ScrapeConfig
+	var configs []promconfig.ScrapeConfig
 
 	metadata, err := t.metadataRetrieve(appMetadata, app.GUID)
 	if err != nil {
-		return policies, endpoints, fmt.Errorf("metadataRetrieve: %w", err)
+		return policies, configs, fmt.Errorf("metadataRetrieve: %w", err)
 	}
+	portNumber := 9090 // Default
 	if port := metadata.Annotations["prometheus.exporter.port"]; port != nil {
-		portNumber, err := strconv.Atoi(*port)
+		portNumber, err = strconv.Atoi(*port)
 		if err != nil {
-			return policies, endpoints, err
+			return policies, configs, err
 		}
-		policies = append(policies, t.newPolicy(app.GUID, portNumber))
-		internalHost, err := t.internalHost(app)
-		if err != nil {
-			return policies, endpoints, err
-		}
-		endpoints = append(endpoints, promconfig.ScrapeConfig{
-			JobName:         fmt.Sprintf("%s-exporter", app.Name),
-			HonorTimestamps: true,
-			Scheme:          "http",
-			MetricsPath:     "/metrics",
-			ServiceDiscoveryConfig: promconfig.ServiceDiscoveryConfig{
-				StaticConfigs: []*promconfig.Group{
-					{
-						Targets: []string{
-							fmt.Sprintf("%s:%d", internalHost, portNumber),
-						},
+	}
+	scrapePath := "/metrics" // Default
+	if path := metadata.Annotations["prometheus.exporter.path"]; path != nil {
+		scrapePath = *path
+	}
+	policies = append(policies, t.newPolicy(app.GUID, portNumber))
+	internalHost, err := t.internalHost(app)
+	if err != nil {
+		return policies, configs, err
+	}
+	targetHost := fmt.Sprintf("%s:%d", internalHost, portNumber)
+	scrapeConfig := promconfig.ScrapeConfig{
+		JobName:         fmt.Sprintf("%s-exporter", app.Name),
+		HonorTimestamps: true,
+		Scheme:          "http",
+		MetricsPath:     scrapePath,
+		ServiceDiscoveryConfig: promconfig.ServiceDiscoveryConfig{
+			StaticConfigs: []*promconfig.Group{
+				{
+					Targets: []string{
+						targetHost,
 					},
 				},
 			},
-		})
+		},
 	}
-	return policies, endpoints, nil
+	if port := metadata.Annotations["prometheus.targets.port"]; port != nil {
+		targetsPort, err := strconv.Atoi(*port)
+		if err != nil {
+			return policies, configs, err
+		}
+		targetsPath := "/targets"
+		if path := metadata.Annotations["prometheus.targets.path"]; path != nil {
+			targetsPath = *path
+		}
+		targetsURL := fmt.Sprintf("%s:%d%s", internalHost, targetsPort, targetsPath)
+		policies = append(policies, t.newPolicy(app.GUID, targetsPort))
+		scrapeConfig.RelabelConfigs = append(scrapeConfig.RelabelConfigs,
+			&promconfig.RelabelConfig{
+				SourceLabels: []string{"__address__"},
+				TargetLabel:  "__param_target",
+			},
+			&promconfig.RelabelConfig{
+				SourceLabels: []string{"__param_target"},
+				TargetLabel:  "instance",
+			},
+			&promconfig.RelabelConfig{
+				Replacement: targetHost,
+				TargetLabel: "__address__",
+			})
+		scrapeConfig.ServiceDiscoveryConfig = promconfig.ServiceDiscoveryConfig{
+			HTTPSDConfigs: []*promconfig.HTTPSDConfig{
+				{URL: targetsURL},
+			},
+		}
+	}
+	configs = append(configs, scrapeConfig)
+	return policies, configs, nil
 }
 
 func (t *Timeline) getCurrentPolicies() []cfnetv1.Policy {
