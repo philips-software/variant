@@ -48,6 +48,7 @@ func main() {
 	viper.SetEnvPrefix("variant")
 	viper.SetDefault("port", "6633")
 	viper.SetDefault("thanos_url", "http://localhost:9090")
+	viper.SetDefault("refresh", 15)
 	viper.AutomaticEnv()
 
 	// Determine thanosID
@@ -84,9 +85,10 @@ func main() {
 		fmt.Printf("error: %v\n", err)
 		return
 	}
+	refresh := viper.GetInt("refresh")
 	done := make(chan bool)
 
-	go timekeeper(5, timeline, done)
+	go timekeeper(time.Duration(refresh), timeline, done)
 
 	e := echo.New()
 	e.GET("/prometheus", prometheusHandler(timeline))
