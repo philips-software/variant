@@ -238,7 +238,7 @@ func (t *Timeline) generatePoliciesAndScrapeConfigs(app resources.Application) (
 		if path := metadata.Annotations["prometheus.targets.path"]; path != nil {
 			targetsPath = *path
 		}
-		targetsURL := fmt.Sprintf("%s:%d%s", internalHost, targetsPort, targetsPath)
+		targetsURL := fmt.Sprintf("http://%s:%d%s", internalHost, targetsPort, targetsPath)
 		policies = append(policies, t.newPolicy(app.GUID, targetsPort))
 		scrapeConfig.RelabelConfigs = append(scrapeConfig.RelabelConfigs,
 			&promconfig.RelabelConfig{
