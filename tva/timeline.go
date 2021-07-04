@@ -37,6 +37,7 @@ type Timeline struct {
 	startState  []cfnetv1.Policy
 	startConfig string
 	config      Config
+	debug       bool
 }
 
 type ScrapeEndpoint struct {
@@ -47,7 +48,17 @@ type ScrapeEndpoint struct {
 	Name string `json:"name,omitempty"`
 }
 
-func NewTimeline(config Config, selectors []string) (*Timeline, error) {
+type OptionFunc func(timeline *Timeline) error
+
+// WithDebug sets debugging flag
+func WithDebug(debug bool) OptionFunc {
+	return func(timeline *Timeline) error {
+		timeline.debug = debug
+		return nil
+	}
+}
+
+func NewTimeline(config Config, selectors []string, opts ...OptionFunc) (*Timeline, error) {
 	session, err := clients.NewSession(config.Config)
 	if err != nil {
 		return nil, fmt.Errorf("NewTimeline: %w", err)
@@ -70,6 +81,11 @@ func NewTimeline(config Config, selectors []string) (*Timeline, error) {
 	}
 	timeline.startConfig = string(data)
 	timeline.startState = timeline.getCurrentPolicies()
+	for _, o := range opts {
+		if err := o(timeline); err != nil {
+			return nil, err
+		}
+	}
 	return timeline, nil
 }
 
@@ -99,8 +115,9 @@ func (t *Timeline) Reconcile() error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("found %d matching selectors\n", len(apps))
-
+	if t.debug {
+		fmt.Printf("found %d matching selectors\n", len(apps))
+	}
 	// Determine the desired state
 	var configs []promconfig.ScrapeConfig
 	var generatedPolicies []cfnetv1.Policy
@@ -114,8 +131,9 @@ func (t *Timeline) Reconcile() error {
 	}
 	desiredState := uniqPolicies(append(t.startState, generatedPolicies...))
 	currentState := t.getCurrentPolicies()
-	fmt.Printf("desired: %d, current: %d\n", len(desiredState), len(currentState))
-
+	if t.debug {
+		fmt.Printf("desired: %d, current: %d\n", len(desiredState), len(currentState))
+	}
 	// Calculate add/prune
 	var toAdd []cfnetv1.Policy
 	for _, p := range desiredState {
@@ -178,7 +196,9 @@ func (t *Timeline) Reconcile() error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("---config start---\n%s\n---config end---\n", string(output))
+	if t.debug {
+		fmt.Printf("---config start---\n%s\n---config end---\n", string(output))
+	}
 	return nil
 }
 

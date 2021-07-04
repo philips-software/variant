@@ -48,6 +48,7 @@ func main() {
 	viper.SetEnvPrefix("variant")
 	viper.SetDefault("port", "6633")
 	viper.SetDefault("thanos_url", "http://localhost:9090")
+	viper.SetDefault("debug", false)
 	viper.SetDefault("refresh", 15)
 	viper.AutomaticEnv()
 
@@ -80,7 +81,7 @@ func main() {
 	}
 
 	selectors := []string{"variant.tva/exporter=true"}
-	timeline, err := tva.NewTimeline(config, selectors)
+	timeline, err := tva.NewTimeline(config, selectors, tva.WithDebug(viper.GetBool("debug")))
 	if err != nil {
 		fmt.Printf("error: %v\n", err)
 		return
