@@ -50,6 +50,8 @@ func main() {
 	viper.SetDefault("thanos_url", "http://localhost:9090")
 	viper.SetDefault("debug", false)
 	viper.SetDefault("refresh", 15)
+	viper.SetDefault("tenants", "default")
+	viper.SetDefault("reload", false)
 	viper.AutomaticEnv()
 
 	// Determine thanosID
@@ -80,8 +82,10 @@ func main() {
 		ThanosURL:        viper.GetString("thanos_url"),
 	}
 
-	selectors := []string{"variant.tva/exporter=true"}
-	timeline, err := tva.NewTimeline(config, selectors, tva.WithDebug(viper.GetBool("debug")))
+	timeline, err := tva.NewTimeline(config,
+		tva.WithDebug(viper.GetBool("debug")),
+		tva.WithTenants(viper.GetString("tenants")),
+		tva.WithReload(viper.GetBool("reload")))
 	if err != nil {
 		fmt.Printf("error: %v\n", err)
 		return

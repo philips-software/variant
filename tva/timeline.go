@@ -18,7 +18,9 @@ import (
 )
 
 const (
-	appMetadata metadataType = "apps"
+	appMetadata   metadataType = "apps"
+	exporterLabel              = "variant.tva/exporter"
+	tenantLabel                = "variant.tva/tenant"
 )
 
 type Config struct {
@@ -32,12 +34,14 @@ type Config struct {
 type Timeline struct {
 	sync.Mutex
 	*clients.Session
-	targets     []promconfig.ScrapeConfig
-	Selectors   []string
-	startState  []cfnetv1.Policy
-	startConfig string
-	config      Config
-	debug       bool
+	targets       []promconfig.ScrapeConfig
+	Selectors     []string
+	defaultTenant bool
+	startState    []cfnetv1.Policy
+	startConfig   string
+	config        Config
+	reload        bool
+	debug         bool
 }
 
 type ScrapeEndpoint struct {
@@ -48,24 +52,14 @@ type ScrapeEndpoint struct {
 	Name string `json:"name,omitempty"`
 }
 
-type OptionFunc func(timeline *Timeline) error
-
-// WithDebug sets debugging flag
-func WithDebug(debug bool) OptionFunc {
-	return func(timeline *Timeline) error {
-		timeline.debug = debug
-		return nil
-	}
-}
-
-func NewTimeline(config Config, selectors []string, opts ...OptionFunc) (*Timeline, error) {
+func NewTimeline(config Config, opts ...OptionFunc) (*Timeline, error) {
 	session, err := clients.NewSession(config.Config)
 	if err != nil {
 		return nil, fmt.Errorf("NewTimeline: %w", err)
 	}
 	timeline := &Timeline{
 		Session:   session,
-		Selectors: selectors,
+		Selectors: []string{fmt.Sprintf("%s=true", exporterLabel)},
 		config:    config,
 	}
 	data, err := ioutil.ReadFile(config.PrometheusConfig)
@@ -75,7 +69,6 @@ func NewTimeline(config Config, selectors []string, opts ...OptionFunc) (*Timeli
 	var cfg promconfig.Config
 	err = yaml.Unmarshal(data, &cfg)
 
-	//cfg, err := promconfig.Load(string(data))
 	if err != nil {
 		return nil, fmt.Errorf("load prometheus config: %w", err)
 	}
@@ -86,12 +79,21 @@ func NewTimeline(config Config, selectors []string, opts ...OptionFunc) (*Timeli
 			return nil, err
 		}
 	}
+	if timeline.debug {
+		fmt.Printf("selectors:\n")
+		for _, s := range timeline.Selectors {
+			fmt.Printf("%s\n", s)
+		}
+	}
 	return timeline, nil
 }
 
 func (t *Timeline) saveAndReload(newConfig string) error {
 	if err := ioutil.WriteFile(t.config.PrometheusConfig, []byte(newConfig), 0644); err != nil {
 		return fmt.Errorf("save config: %w", err)
+	}
+	if !t.reload { // Prometheus/Thanos uses inotify
+		return nil
 	}
 	resp, err := http.Post(t.config.ThanosURL+"/-/reload", "application/json", nil)
 	if err != nil {
@@ -112,6 +114,19 @@ func (t *Timeline) Reconcile() error {
 		Key:    "label_selector",
 		Values: t.Selectors,
 	})
+	// Retrieve default apps if applicable
+	if len(t.Selectors) > 1 && t.defaultTenant {
+		defaultApps, _, err := t.V3().GetApplications(ccv3.Query{
+			Key: "label_selector",
+			Values: []string{
+				t.Selectors[0],
+				fmt.Sprintf("!%s", tenantLabel)},
+		})
+		if err == nil {
+			apps = append(apps, defaultApps...)
+		}
+	}
+
 	if err != nil {
 		return err
 	}
@@ -228,6 +243,14 @@ func (t *Timeline) generatePoliciesAndScrapeConfigs(app resources.Application) (
 	if path := metadata.Annotations["prometheus.exporter.path"]; path != nil {
 		scrapePath = *path
 	}
+	jobName := app.Name // Default
+	if name := metadata.Annotations["prometheus.exporter.job_name"]; name != nil {
+		jobName = *name
+	}
+	scheme := "http" // Default
+	if schema := metadata.Annotations["prometheus.exporter.scheme"]; schema != nil {
+		scheme = *schema
+	}
 	policies = append(policies, t.newPolicy(app.GUID, portNumber))
 	internalHost, err := t.internalHost(app)
 	if err != nil {
@@ -235,9 +258,9 @@ func (t *Timeline) generatePoliciesAndScrapeConfigs(app resources.Application) (
 	}
 	targetHost := fmt.Sprintf("%s:%d", internalHost, portNumber)
 	scrapeConfig := promconfig.ScrapeConfig{
-		JobName:         fmt.Sprintf("%s-exporter", app.Name),
+		JobName:         jobName,
 		HonorTimestamps: true,
-		Scheme:          "http",
+		Scheme:          scheme,
 		MetricsPath:     scrapePath,
 		ServiceDiscoveryConfig: promconfig.ServiceDiscoveryConfig{
 			StaticConfigs: []*promconfig.Group{
