@@ -228,6 +228,16 @@ func (t *Timeline) generatePoliciesAndScrapeConfigs(app resources.Application) (
 	var policies []cfnetv1.Policy
 	var configs []promconfig.ScrapeConfig
 
+	instanceCount := 0
+	processes, _, err := t.V3().GetApplicationProcesses(app.GUID)
+	for _, p := range processes {
+		if p.Instances.IsSet && p.Instances.Value > instanceCount {
+			instanceCount = p.Instances.Value
+		}
+	}
+	if instanceCount == 0 {
+		return policies, configs, fmt.Errorf("no instances found")
+	}
 	metadata, err := t.metadataRetrieve(appMetadata, app.GUID)
 	if err != nil {
 		return policies, configs, fmt.Errorf("metadataRetrieve: %w", err)
@@ -256,7 +266,10 @@ func (t *Timeline) generatePoliciesAndScrapeConfigs(app resources.Application) (
 	if err != nil {
 		return policies, configs, err
 	}
-	targetHost := fmt.Sprintf("%s:%d", internalHost, portNumber)
+	var targets []string
+	for count := 0; count < instanceCount; count++ {
+		targets = append(targets, fmt.Sprintf("%d.%s:%d", count, internalHost, portNumber))
+	}
 	scrapeConfig := promconfig.ScrapeConfig{
 		JobName:         jobName,
 		HonorTimestamps: true,
@@ -265,9 +278,7 @@ func (t *Timeline) generatePoliciesAndScrapeConfigs(app resources.Application) (
 		ServiceDiscoveryConfig: promconfig.ServiceDiscoveryConfig{
 			StaticConfigs: []*promconfig.Group{
 				{
-					Targets: []string{
-						targetHost,
-					},
+					Targets: targets,
 				},
 			},
 		},
@@ -291,10 +302,6 @@ func (t *Timeline) generatePoliciesAndScrapeConfigs(app resources.Application) (
 			&promconfig.RelabelConfig{
 				SourceLabels: []string{"__param_target"},
 				TargetLabel:  "instance",
-			},
-			&promconfig.RelabelConfig{
-				Replacement: targetHost,
-				TargetLabel: "__address__",
 			})
 		scrapeConfig.ServiceDiscoveryConfig = promconfig.ServiceDiscoveryConfig{
 			HTTPSDConfigs: []*promconfig.HTTPSDConfig{
