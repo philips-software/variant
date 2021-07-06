@@ -51,7 +51,7 @@ func main() {
 	viper.SetDefault("debug", false)
 	viper.SetDefault("refresh", 15)
 	viper.SetDefault("tenants", "default")
-	viper.SetDefault("reload", false)
+	viper.SetDefault("reload", true)
 	viper.AutomaticEnv()
 
 	// Determine thanosID
