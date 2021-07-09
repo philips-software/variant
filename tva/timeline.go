@@ -268,7 +268,8 @@ func (t *Timeline) generatePoliciesAndScrapeConfigs(app resources.Application) (
 	}
 	var targets []string
 	for count := 0; count < instanceCount; count++ {
-		targets = append(targets, fmt.Sprintf("%d.%s:%d", count, internalHost, portNumber))
+		target := fmt.Sprintf("%d.%s:%d", count, internalHost, portNumber)
+		targets = append(targets, target)
 	}
 	scrapeConfig := promconfig.ScrapeConfig{
 		JobName:         jobName,
@@ -314,7 +315,13 @@ func (t *Timeline) generatePoliciesAndScrapeConfigs(app resources.Application) (
 }
 
 func (t *Timeline) getCurrentPolicies() []cfnetv1.Policy {
-	policies, _ := t.Networking().ListPolicies(t.config.ThanosID)
+	allPolicies, _ := t.Networking().ListPolicies(t.config.ThanosID)
+	var policies []cfnetv1.Policy
+	for _, p := range allPolicies {
+		if p.Source.ID == t.config.ThanosID {
+			policies = append(policies, p)
+		}
+	}
 	return policies
 }
 
