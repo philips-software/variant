@@ -284,6 +284,16 @@ func (t *Timeline) generatePoliciesAndScrapeConfigs(app resources.Application) (
 			},
 		},
 	}
+	instanceName := ""
+	if name := metadata.Annotations["prometheus.exporter.instance_name"]; name != nil {
+		instanceName = *name
+	}
+	if instanceName != "" {
+		scrapeConfig.RelabelConfigs = append(scrapeConfig.RelabelConfigs, &promconfig.RelabelConfig{
+			TargetLabel: "instance",
+			Replacement: instanceName,
+		})
+	}
 	if port := metadata.Annotations["prometheus.targets.port"]; port != nil {
 		targetsPort, err := strconv.Atoi(*port)
 		if err != nil {
