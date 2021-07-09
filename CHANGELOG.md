@@ -5,6 +5,7 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 ## v0.0.12
 - Fix over-pruning of network policies
+- Initial support for instant naming: `prometheus.exporter.instance_name`
 
 ## v0.0.11
 - Support multiple instances
