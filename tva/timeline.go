@@ -290,7 +290,7 @@ func (t *Timeline) generatePoliciesAndScrapeConfigs(app App) ([]cfnetv1.Policy, 
 		if regex := metadata.Annotations["prometheus.exporter.target_regex"]; regex != nil {
 			targetRegex = *regex
 		}
-		scrapeConfig.RelabelConfigs = append(scrapeConfig.RelabelConfigs, &promconfig.RelabelConfig{
+		scrapeConfig.MetricRelabelConfigs = append(scrapeConfig.MetricRelabelConfigs, &promconfig.RelabelConfig{
 			TargetLabel:  "instance",
 			SourceLabels: []string{"__address__"},
 			Replacement:  instanceName,
