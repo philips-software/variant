@@ -44,12 +44,10 @@ type Timeline struct {
 	debug         bool
 }
 
-type ScrapeEndpoint struct {
-	ID   string `json:"id"`
-	Port int    `json:"port"`
-	Host string `json:"host"`
-	Path string `json:"path,omitempty"`
-	Name string `json:"name,omitempty"`
+type App struct {
+	resources.Application
+	OrgName   string
+	SpaceName string
 }
 
 func NewTimeline(config Config, opts ...OptionFunc) (*Timeline, error) {
@@ -140,7 +138,7 @@ func (t *Timeline) Reconcile() error {
 		// Erase app from startTime if it show up on the timeline
 		t.startState = prunePoliciesByDestination(t.startState, app.GUID)
 		// Calculate policies and scrape_config sections for app
-		policies, endpoints, _ := t.generatePoliciesAndScrapeConfigs(app)
+		policies, endpoints, _ := t.generatePoliciesAndScrapeConfigs(App{Application: app})
 		generatedPolicies = append(generatedPolicies, policies...)
 		configs = append(configs, endpoints...)
 	}
@@ -224,7 +222,7 @@ func (t *Timeline) Targets() []promconfig.ScrapeConfig {
 	return targets
 }
 
-func (t *Timeline) generatePoliciesAndScrapeConfigs(app resources.Application) ([]cfnetv1.Policy, []promconfig.ScrapeConfig, error) {
+func (t *Timeline) generatePoliciesAndScrapeConfigs(app App) ([]cfnetv1.Policy, []promconfig.ScrapeConfig, error) {
 	var policies []cfnetv1.Policy
 	var configs []promconfig.ScrapeConfig
 
@@ -280,6 +278,9 @@ func (t *Timeline) generatePoliciesAndScrapeConfigs(app resources.Application) (
 			StaticConfigs: []*promconfig.Group{
 				{
 					Targets: targets,
+					Labels: map[string]string{
+						"cf_app_name": app.Name,
+					},
 				},
 			},
 		},
@@ -289,9 +290,14 @@ func (t *Timeline) generatePoliciesAndScrapeConfigs(app resources.Application) (
 		instanceName = *name
 	}
 	if instanceName != "" {
+		targetRegex := "([^.]*).(.*)" // This match our own target format: ${1} = instanceIndex, ${2} = host:port
+		if regex := metadata.Annotations["prometheus.exporter.target_regex"]; regex != nil {
+			targetRegex = *regex
+		}
 		scrapeConfig.RelabelConfigs = append(scrapeConfig.RelabelConfigs, &promconfig.RelabelConfig{
 			TargetLabel: "instance",
 			Replacement: instanceName,
+			Regex:       targetRegex,
 		})
 	}
 	if port := metadata.Annotations["prometheus.targets.port"]; port != nil {
@@ -350,7 +356,7 @@ func pathMetadata(m metadataType, guid string) string {
 	return fmt.Sprintf("/v3/%s/%s", m, guid)
 }
 
-func (t *Timeline) internalHost(app resources.Application) (string, error) {
+func (t *Timeline) internalHost(app App) (string, error) {
 	client := t.Session.V2()
 	routes, _, err := client.GetApplicationRoutes(app.GUID)
 	if err != nil {
