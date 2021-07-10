@@ -205,14 +205,10 @@ func (t *Timeline) Reconcile() error {
 	if err != nil {
 		return err
 	}
-	err = t.saveAndReload(string(output))
-	if err != nil {
-		return err
-	}
 	if t.debug {
 		fmt.Printf("---config start---\n%s\n---config end---\n", string(output))
 	}
-	return nil
+	return t.saveAndReload(string(output))
 }
 
 func (t *Timeline) Targets() []promconfig.ScrapeConfig {
