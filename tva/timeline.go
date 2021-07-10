@@ -292,8 +292,9 @@ func (t *Timeline) generatePoliciesAndScrapeConfigs(app App) ([]cfnetv1.Policy, 
 		}
 		scrapeConfig.MetricRelabelConfigs = append(scrapeConfig.MetricRelabelConfigs, &promconfig.RelabelConfig{
 			TargetLabel:  "instance",
-			SourceLabels: []string{"__address__"},
+			SourceLabels: []string{"instance"},
 			Replacement:  instanceName,
+			Action:       "replace",
 			Regex:        targetRegex,
 		})
 	}
