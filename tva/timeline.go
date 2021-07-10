@@ -295,9 +295,10 @@ func (t *Timeline) generatePoliciesAndScrapeConfigs(app App) ([]cfnetv1.Policy, 
 			targetRegex = *regex
 		}
 		scrapeConfig.RelabelConfigs = append(scrapeConfig.RelabelConfigs, &promconfig.RelabelConfig{
-			TargetLabel: "instance",
-			Replacement: instanceName,
-			Regex:       targetRegex,
+			TargetLabel:  "instance",
+			SourceLabels: []string{"__param_target"},
+			Replacement:  instanceName,
+			Regex:        targetRegex,
 		})
 	}
 	if port := metadata.Annotations["prometheus.targets.port"]; port != nil {
