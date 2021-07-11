@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
+	"time"
 
 	"code.cloudfoundry.org/cfnetworking-cli-api/cfnetworking/cfnetv1"
 	"code.cloudfoundry.org/cli/api/cloudcontroller/ccerror"
@@ -18,9 +19,17 @@ import (
 )
 
 const (
-	appMetadata   metadataType = "apps"
-	exporterLabel              = "variant.tva/exporter"
-	tenantLabel                = "variant.tva/tenant"
+	appMetadata                   metadataType = "apps"
+	ExporterLabel                              = "variant.tva/exporter"
+	TenantLabel                                = "variant.tva/tenant"
+	AnnotationInstanceName                     = "prometheus.exporter.instance_name"
+	AnnotationInstanceSourceRegex              = "prometheus.exporter.instance_source_regex"
+	AnnotationExporterPort                     = "prometheus.exporter.port"
+	AnnotationExporterPath                     = "prometheus.exporter.path"
+	AnnotationExporterScheme                   = "prometheus.exporter.scheme"
+	AnnotationExporterJobName                  = "prometheus.exporter.job_name"
+	AnnotationTargetsPort                      = "prometheus.targets.port"
+	AnnotationTargetsPath                      = "prometheus.targets.path"
 )
 
 type Config struct {
@@ -42,6 +51,7 @@ type Timeline struct {
 	config        Config
 	reload        bool
 	debug         bool
+	metrics       Metrics
 }
 
 type App struct {
@@ -57,7 +67,7 @@ func NewTimeline(config Config, opts ...OptionFunc) (*Timeline, error) {
 	}
 	timeline := &Timeline{
 		Session:   session,
-		Selectors: []string{fmt.Sprintf("%s=true", exporterLabel)},
+		Selectors: []string{fmt.Sprintf("%s=true", ExporterLabel)},
 		config:    config,
 	}
 	data, err := ioutil.ReadFile(config.PrometheusConfig)
@@ -104,8 +114,20 @@ func (t *Timeline) saveAndReload(newConfig string) error {
 
 // Reconcile calculates and applies network-polices and scrap configs
 func (t *Timeline) Reconcile() error {
+	var foundScrapeConfigs = 0
+	var managedNetworkPolicies = 0
+
 	t.Lock()
 	defer t.Unlock()
+
+	var startTime = time.Now()
+	defer func() {
+		duration := time.Now().Sub(startTime)
+		t.metrics.ScrapeInterval.Set(float64(duration / time.Millisecond))
+		t.metrics.ManagedNetworkPolicies.Set(float64(managedNetworkPolicies))
+		t.metrics.DetectedScrapeConfigs.Set(float64(foundScrapeConfigs))
+		t.metrics.TotalIncursions.Inc()
+	}()
 
 	// Retrieve all relevant apps
 	apps, _, err := t.V3().GetApplications(ccv3.Query{
@@ -118,7 +140,7 @@ func (t *Timeline) Reconcile() error {
 			Key: "label_selector",
 			Values: []string{
 				t.Selectors[0],
-				fmt.Sprintf("!%s", tenantLabel)},
+				fmt.Sprintf("!%s", TenantLabel)},
 		})
 		if err == nil {
 			apps = append(apps, defaultApps...)
@@ -142,6 +164,8 @@ func (t *Timeline) Reconcile() error {
 		generatedPolicies = append(generatedPolicies, policies...)
 		configs = append(configs, endpoints...)
 	}
+	foundScrapeConfigs = len(configs)
+	managedNetworkPolicies = len(generatedPolicies)
 	desiredState := uniqPolicies(append(t.startState, generatedPolicies...))
 	currentState := t.getCurrentPolicies()
 	if t.debug {
@@ -180,12 +204,14 @@ func (t *Timeline) Reconcile() error {
 		err := t.Networking().RemovePolicies(toPrune)
 		if err != nil {
 			fmt.Printf("error removing: %v\n", err)
+			t.metrics.ErrorIncursions.Inc()
 		}
 	}
 	if len(toAdd) > 0 {
 		err := t.Networking().CreatePolicies(toAdd)
 		if err != nil {
 			fmt.Printf("error creating: %v\n", err)
+			t.metrics.ErrorIncursions.Inc()
 		}
 	}
 	t.targets = configs // Refresh the targets list
@@ -195,6 +221,7 @@ func (t *Timeline) Reconcile() error {
 
 	err = yaml.Unmarshal([]byte(t.startConfig), &newCfg)
 	if err != nil {
+		t.metrics.ErrorIncursions.Inc()
 		return fmt.Errorf("loading config: %w", err)
 	}
 	for _, cfg := range configs {
@@ -203,7 +230,8 @@ func (t *Timeline) Reconcile() error {
 	}
 	output, err := yaml.Marshal(newCfg)
 	if err != nil {
-		return err
+		t.metrics.ErrorIncursions.Inc()
+		return fmt.Errorf("yaml.Marshal: %w", err)
 	}
 	if t.debug {
 		fmt.Printf("---config start---\n%s\n---config end---\n", string(output))
@@ -237,22 +265,22 @@ func (t *Timeline) generatePoliciesAndScrapeConfigs(app App) ([]cfnetv1.Policy, 
 		return policies, configs, fmt.Errorf("metadataRetrieve: %w", err)
 	}
 	portNumber := 9090 // Default
-	if port := metadata.Annotations["prometheus.exporter.port"]; port != nil {
+	if port := metadata.Annotations[AnnotationExporterPort]; port != nil {
 		portNumber, err = strconv.Atoi(*port)
 		if err != nil {
 			return policies, configs, err
 		}
 	}
 	scrapePath := "/metrics" // Default
-	if path := metadata.Annotations["prometheus.exporter.path"]; path != nil {
+	if path := metadata.Annotations[AnnotationExporterPath]; path != nil {
 		scrapePath = *path
 	}
 	jobName := app.Name // Default
-	if name := metadata.Annotations["prometheus.exporter.job_name"]; name != nil {
+	if name := metadata.Annotations[AnnotationExporterJobName]; name != nil {
 		jobName = *name
 	}
 	scheme := "http" // Default
-	if schema := metadata.Annotations["prometheus.exporter.scheme"]; schema != nil {
+	if schema := metadata.Annotations[AnnotationExporterScheme]; schema != nil {
 		scheme = *schema
 	}
 	policies = append(policies, t.newPolicy(app.GUID, portNumber))
@@ -282,12 +310,12 @@ func (t *Timeline) generatePoliciesAndScrapeConfigs(app App) ([]cfnetv1.Policy, 
 		},
 	}
 	instanceName := ""
-	if name := metadata.Annotations["prometheus.exporter.instance_name"]; name != nil {
+	if name := metadata.Annotations[AnnotationInstanceName]; name != nil {
 		instanceName = *name
 	}
 	if instanceName != "" {
 		targetRegex := "([^.]*).(.*)" // This match our own target format: ${1} = instanceIndex, ${2} = host:port
-		if regex := metadata.Annotations["prometheus.exporter.target_regex"]; regex != nil {
+		if regex := metadata.Annotations[AnnotationInstanceSourceRegex]; regex != nil {
 			targetRegex = *regex
 		}
 		scrapeConfig.MetricRelabelConfigs = append(scrapeConfig.MetricRelabelConfigs, &promconfig.RelabelConfig{
@@ -298,13 +326,13 @@ func (t *Timeline) generatePoliciesAndScrapeConfigs(app App) ([]cfnetv1.Policy, 
 			Regex:        targetRegex,
 		})
 	}
-	if port := metadata.Annotations["prometheus.targets.port"]; port != nil {
+	if port := metadata.Annotations[AnnotationTargetsPort]; port != nil {
 		targetsPort, err := strconv.Atoi(*port)
 		if err != nil {
 			return policies, configs, err
 		}
 		targetsPath := "/targets"
-		if path := metadata.Annotations["prometheus.targets.path"]; path != nil {
+		if path := metadata.Annotations[AnnotationTargetsPath]; path != nil {
 			targetsPath = *path
 		}
 		targetsURL := fmt.Sprintf("http://%s:%d%s", internalHost, targetsPort, targetsPath)

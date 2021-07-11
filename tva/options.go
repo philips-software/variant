@@ -3,9 +3,19 @@ package tva
 import (
 	"fmt"
 	"strings"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 type OptionFunc func(timeline *Timeline) error
+
+type Metrics struct {
+	ScrapeInterval         prometheus.Gauge
+	ManagedNetworkPolicies prometheus.Gauge
+	DetectedScrapeConfigs  prometheus.Gauge
+	TotalIncursions        prometheus.Counter
+	ErrorIncursions        prometheus.Counter
+}
 
 // WithDebug sets debugging flag
 func WithDebug(debug bool) OptionFunc {
@@ -18,6 +28,13 @@ func WithDebug(debug bool) OptionFunc {
 func WithReload(reload bool) OptionFunc {
 	return func(t *Timeline) error {
 		t.reload = reload
+		return nil
+	}
+}
+
+func WithMetrics(metrics Metrics) OptionFunc {
+	return func(t *Timeline) error {
+		t.metrics = metrics
 		return nil
 	}
 }
@@ -37,7 +54,7 @@ func WithTenants(tenants string) OptionFunc {
 		t.defaultTenant = isDefault
 		if len(vetted) > 0 {
 			tenants = strings.Join(vetted, ",")
-			t.Selectors = append(t.Selectors, fmt.Sprintf("%s in (%s)", tenantLabel, tenants))
+			t.Selectors = append(t.Selectors, fmt.Sprintf("%s in (%s)", TenantLabel, tenants))
 		}
 		return nil
 	}

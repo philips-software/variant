@@ -4,21 +4,17 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"time"
 	"timekeeper/tva"
 
 	clients "github.com/cloudfoundry-community/go-cf-clients-helper"
-	"github.com/labstack/echo/v4"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/viper"
 )
-
-type SDConfig struct {
-	Targets []string          `json:"targets"`
-	Labels  map[string]string `json:"labels"`
-}
 
 type VCAPApplication struct {
 	CfAPI  string `json:"cf_api"`
@@ -89,7 +85,30 @@ func main() {
 	timeline, err := tva.NewTimeline(config,
 		tva.WithDebug(viper.GetBool("debug")),
 		tva.WithTenants(viper.GetString("tenants")),
-		tva.WithReload(viper.GetBool("reload")))
+		tva.WithReload(viper.GetBool("reload")),
+		tva.WithMetrics(tva.Metrics{
+			ScrapeInterval: promauto.NewGauge(prometheus.GaugeOpts{
+				Name: "variant_scrape_interval",
+				Help: "The last scrape interval duration",
+			}),
+			DetectedScrapeConfigs: promauto.NewGauge(prometheus.GaugeOpts{
+				Name: "variant_scrape_configs_detected",
+				Help: "Detected scrape configs",
+			}),
+			ManagedNetworkPolicies: promauto.NewGauge(prometheus.GaugeOpts{
+				Name: "variant_network_policies_managed",
+				Help: "The number of network policies being managed by variant",
+			}),
+			TotalIncursions: promauto.NewCounter(prometheus.CounterOpts{
+				Name: "variant_incursions_total",
+				Help: "Total number of incursions (scrapes) done by variant so far",
+			}),
+			ErrorIncursions: promauto.NewCounter(prometheus.CounterOpts{
+				Name: "variant_incursions_error",
+				Help: "Total number of incursions that went wrong",
+			}),
+		}),
+	)
 	if err != nil {
 		fmt.Printf("error: %v\n", err)
 		return
@@ -101,14 +120,13 @@ func main() {
 	}
 	done := make(chan bool)
 
-	go timekeeper(time.Duration(refresh), timeline, done)
+	// Self monitoring
+	go func() {
+		http.Handle("/metrics", promhttp.Handler())
+		_ = http.ListenAndServe(fmt.Sprintf(":%d", listenPort), nil)
+	}()
 
-	e := echo.New()
-	e.GET("/prometheus", prometheusHandler(timeline))
-
-	port := viper.GetInt("port")
-
-	log.Fatal(e.Start(fmt.Sprintf(":%d", port)))
+	timekeeper(time.Duration(refresh), timeline, done)
 }
 
 func timekeeper(tick time.Duration, timeline *tva.Timeline, done <-chan bool) {
@@ -125,16 +143,5 @@ func timekeeper(tick time.Duration, timeline *tva.Timeline, done <-chan bool) {
 				fmt.Printf("error reconciling: %v\n", err)
 			}
 		}
-	}
-}
-
-func prometheusHandler(timeline *tva.Timeline) echo.HandlerFunc {
-
-	return func(c echo.Context) error {
-		var results []SDConfig
-
-		timeline.Lock()
-		defer timeline.Unlock()
-		return c.JSON(http.StatusOK, results)
 	}
 }
