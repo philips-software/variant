@@ -42,11 +42,15 @@ type VCAPApplication struct {
 	ApplicationVersion string   `json:"application_version"`
 }
 
+const (
+	listenPort = 1024 + 116 + 118 + 97
+)
+
 func main() {
 	var vcapApplication VCAPApplication
 
 	viper.SetEnvPrefix("variant")
-	viper.SetDefault("port", "6633")
+	viper.SetDefault("port", listenPort)
 	viper.SetDefault("thanos_url", "http://localhost:9090")
 	viper.SetDefault("debug", false)
 	viper.SetDefault("refresh", 15)
@@ -91,6 +95,10 @@ func main() {
 		return
 	}
 	refresh := viper.GetInt("refresh")
+	if refresh < 5 {
+		fmt.Printf("refresh interval must be at least 5 seconds [%d]\n", refresh)
+		return
+	}
 	done := make(chan bool)
 
 	go timekeeper(time.Duration(refresh), timeline, done)
@@ -98,9 +106,9 @@ func main() {
 	e := echo.New()
 	e.GET("/prometheus", prometheusHandler(timeline))
 
-	port := viper.GetString("port")
+	port := viper.GetInt("port")
 
-	log.Fatal(e.Start(fmt.Sprintf(":%s", port)))
+	log.Fatal(e.Start(fmt.Sprintf(":%d", port)))
 }
 
 func timekeeper(tick time.Duration, timeline *tva.Timeline, done <-chan bool) {
