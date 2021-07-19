@@ -202,18 +202,24 @@ func (t *Timeline) Reconcile() error {
 	fmt.Printf("adding: %d\n", len(toAdd))
 	fmt.Printf("removing: %d\n", len(toPrune))
 	if len(toPrune) > 0 {
-		err := t.Networking().RemovePolicies(toPrune)
-		if err != nil {
-			fmt.Printf("error removing: %v\n", err)
-			t.metrics.ErrorIncursions.Inc()
+		for _, p := range toPrune {
+			err := t.Networking().RemovePolicies([]cfnetv1.Policy{p})
+			if err != nil {
+				fmt.Printf("error removing policy [%v]: %v\n", p, err)
+				t.metrics.ErrorIncursions.Inc()
+			}
 		}
+
 	}
 	if len(toAdd) > 0 {
-		err := t.Networking().CreatePolicies(toAdd)
-		if err != nil {
-			fmt.Printf("error creating: %v\n", err)
-			t.metrics.ErrorIncursions.Inc()
+		for _, p := range toAdd {
+			err := t.Networking().CreatePolicies([]cfnetv1.Policy{p})
+			if err != nil {
+				fmt.Printf("error creating policy [%v]: %v\n", p, err)
+				t.metrics.ErrorIncursions.Inc()
+			}
 		}
+
 	}
 	t.targets = configs // Refresh the targets list
 
