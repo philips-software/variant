@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -279,6 +280,9 @@ func (t *Timeline) generatePoliciesAndScrapeConfigs(app App) ([]cfnetv1.Policy, 
 	if name := metadata.Annotations[AnnotationExporterJobName]; name != nil {
 		jobName = *name
 	}
+	appGUID := strings.Split(app.GUID, "-")[0]
+	jobName = fmt.Sprintf("%s-%s", jobName, appGUID) // Ensure uniqueness across spaces
+
 	scheme := "http" // Default
 	if schema := metadata.Annotations[AnnotationExporterScheme]; schema != nil {
 		scheme = *schema
