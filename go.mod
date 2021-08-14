@@ -1,4 +1,4 @@
-module timekeeper
+module variant
 
 go 1.16
 

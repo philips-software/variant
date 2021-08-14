@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"time"
-	"timekeeper/tva"
+	"variant/tva"
+	"variant/vcap"
 
 	clients "github.com/cloudfoundry-community/go-cf-clients-helper"
 	"github.com/prometheus/client_golang/prometheus"
@@ -16,34 +16,12 @@ import (
 	"github.com/spf13/viper"
 )
 
-type VCAPApplication struct {
-	CfAPI  string `json:"cf_api"`
-	Limits struct {
-		Fds  int `json:"fds"`
-		Mem  int `json:"mem"`
-		Disk int `json:"disk"`
-	} `json:"limits"`
-	ApplicationName    string   `json:"application_name"`
-	ApplicationUris    []string `json:"application_uris"`
-	Name               string   `json:"name"`
-	SpaceName          string   `json:"space_name"`
-	SpaceID            string   `json:"space_id"`
-	OrganizationID     string   `json:"organization_id"`
-	OrganizationName   string   `json:"organization_name"`
-	Uris               []string `json:"uris"`
-	ProcessID          string   `json:"process_id"`
-	ProcessType        string   `json:"process_type"`
-	ApplicationID      string   `json:"application_id"`
-	Version            string   `json:"version"`
-	ApplicationVersion string   `json:"application_version"`
-}
-
 const (
 	listenPort = 1024 + 116 + 118 + 97
 )
 
 func main() {
-	var vcapApplication VCAPApplication
+	var vcapApplication vcap.Application
 
 	viper.SetEnvPrefix("variant")
 	viper.SetDefault("port", listenPort)
@@ -57,14 +35,20 @@ func main() {
 	// Determine thanosID
 	thanosID := viper.GetString("thanos_id")
 	if thanosID == "" {
-		vcap := json.NewDecoder(bytes.NewBufferString(os.Getenv("VCAP_APPLICATION")))
-		if err := vcap.Decode(&vcapApplication); err != nil {
+		vcapApp := json.NewDecoder(bytes.NewBufferString(os.Getenv("VCAP_APPLICATION")))
+		if err := vcapApp.Decode(&vcapApplication); err != nil {
 			fmt.Printf("not running in CF and no thanosID found in ENV: %v\n", err)
 			return
 		} else {
 			thanosID = vcapApplication.ApplicationID
 		}
 	}
+	refresh := viper.GetInt("refresh")
+	if refresh < 5 {
+		fmt.Printf("refresh interval must be at least 5 seconds [%d]\n", refresh)
+		return
+	}
+
 	fmt.Printf("thanosID: %s\n", thanosID)
 
 	internalDomainID := viper.GetString("internal_domain_id")
@@ -84,6 +68,7 @@ func main() {
 
 	timeline, err := tva.NewTimeline(config,
 		tva.WithDebug(viper.GetBool("debug")),
+		tva.WithFrequency(refresh),
 		tva.WithTenants(viper.GetString("tenants")),
 		tva.WithReload(viper.GetBool("reload")),
 		tva.WithMetrics(tva.Metrics{
@@ -113,35 +98,12 @@ func main() {
 		fmt.Printf("error: %v\n", err)
 		return
 	}
-	refresh := viper.GetInt("refresh")
-	if refresh < 5 {
-		fmt.Printf("refresh interval must be at least 5 seconds [%d]\n", refresh)
-		return
-	}
-	done := make(chan bool)
+
+	done := timeline.Start()
 
 	// Self monitoring
-	go func() {
-		http.Handle("/metrics", promhttp.Handler())
-		_ = http.ListenAndServe(fmt.Sprintf(":%d", listenPort), nil)
-	}()
+	http.Handle("/metrics", promhttp.Handler())
+	_ = http.ListenAndServe(fmt.Sprintf(":%d", listenPort), nil)
 
-	timekeeper(time.Duration(refresh), timeline, done)
-}
-
-func timekeeper(tick time.Duration, timeline *tva.Timeline, done <-chan bool) {
-	ticker := time.NewTicker(tick * time.Second)
-	for {
-		select {
-		case <-done:
-			fmt.Printf("sacred tva is done")
-			return
-		case <-ticker.C:
-			fmt.Printf("reconciling timeline\n")
-			err := timeline.Reconcile()
-			if err != nil {
-				fmt.Printf("error reconciling: %v\n", err)
-			}
-		}
-	}
+	done <- true
 }

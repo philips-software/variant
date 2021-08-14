@@ -3,6 +3,7 @@ package tva
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -21,6 +22,14 @@ type Metrics struct {
 func WithDebug(debug bool) OptionFunc {
 	return func(timeline *Timeline) error {
 		timeline.debug = debug
+		return nil
+	}
+}
+
+// WithFrequency sets frequency of the timeline
+func WithFrequency(tick int) OptionFunc {
+	return func(timeline *Timeline) error {
+		timeline.frequency = time.Duration(tick)
 		return nil
 	}
 }

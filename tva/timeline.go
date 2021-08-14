@@ -53,6 +53,7 @@ type Timeline struct {
 	reload        bool
 	debug         bool
 	metrics       Metrics
+	frequency     time.Duration
 }
 
 type App struct {
@@ -95,6 +96,29 @@ func NewTimeline(config Config, opts ...OptionFunc) (*Timeline, error) {
 		}
 	}
 	return timeline, nil
+}
+
+func (t *Timeline) Start() (done chan bool) {
+	// TODO: ensure we only start once
+	ticker := time.NewTicker(t.frequency * time.Second)
+	doneChan := make(chan bool)
+	go func(done <-chan bool) {
+		for {
+			select {
+			case <-done:
+				fmt.Printf("sacred tva is done")
+				return
+			case <-ticker.C:
+				fmt.Printf("reconciling timeline\n")
+				err := t.Reconcile()
+				if err != nil {
+					fmt.Printf("error reconciling: %v\n", err)
+				}
+			}
+		}
+	}(doneChan)
+
+	return doneChan
 }
 
 func (t *Timeline) saveAndReload(newConfig string) error {
