@@ -20,7 +20,6 @@ import (
 )
 
 const (
-	appMetadata                   metadataType = "apps"
 	ExporterLabel                              = "variant.tva/exporter"
 	TenantLabel                                = "variant.tva/tenant"
 	AnnotationInstanceName                     = "prometheus.exporter.instance_name"
@@ -31,6 +30,7 @@ const (
 	AnnotationExporterJobName                  = "prometheus.exporter.job_name"
 	AnnotationTargetsPort                      = "prometheus.targets.port"
 	AnnotationTargetsPath                      = "prometheus.targets.path"
+	appMetadata                   metadataType = "apps"
 )
 
 type Config struct {
@@ -147,7 +147,7 @@ func (t *Timeline) Reconcile() error {
 
 	var startTime = time.Now()
 	defer func() {
-		duration := time.Now().Sub(startTime)
+		duration := time.Since(startTime)
 		t.metrics.ScrapeInterval.Set(float64(duration / time.Millisecond))
 		t.metrics.ManagedNetworkPolicies.Set(float64(managedNetworkPolicies))
 		t.metrics.DetectedScrapeConfigs.Set(float64(foundScrapeConfigs))
@@ -283,6 +283,9 @@ func (t *Timeline) generatePoliciesAndScrapeConfigs(app App) ([]cfnetv1.Policy, 
 
 	instanceCount := 0
 	processes, _, err := t.V3().GetApplicationProcesses(app.GUID)
+	if err != nil {
+		return policies, configs, err
+	}
 	for _, p := range processes {
 		if p.Instances.IsSet && p.Instances.Value > instanceCount {
 			instanceCount = p.Instances.Value
