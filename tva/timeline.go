@@ -182,7 +182,7 @@ func (t *Timeline) Reconcile() error {
 	var configs []promconfig.ScrapeConfig
 	var generatedPolicies []cfnetv1.Policy
 	for _, app := range apps {
-		// Erase app from startTime if it show up on the timeline
+		// Erase app from startTime if it shows up on the timeline
 		t.startState = prunePoliciesByDestination(t.startState, app.GUID)
 		// Calculate policies and scrape_config sections for app
 		policies, endpoints, _ := t.generatePoliciesAndScrapeConfigs(App{Application: app})
