@@ -10,8 +10,6 @@ import (
 	"variant/tva"
 
 	clients "github.com/cloudfoundry-community/go-cf-clients-helper"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -74,6 +72,36 @@ scrape_configs:
     static_configs:
       - targets: ['localhost:1355']`), 0644)
 	prometheusConfig = f.Name()
+
+	muxCF.HandleFunc("/v3/apps", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			val := r.URL.Query().Get("label_selector")
+			if !assert.Equal(t, "variant.tva/exporter=true", val) {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			_, _ = io.WriteString(w, `{
+  		"pagination": {
+    		"total_results": 0,
+    		"total_pages": 1,
+    		"first": {
+     		 	"href": "`+serverCF.URL+`/v3/apps?label_selector=variant.tva%2Fexporter%3Dtrue&page=1&per_page=50"
+    		},
+    		"last": {
+      			"href": "`+serverCF.URL+`/v3/apps?label_selector=variant.tva%2Fexporter%3Dtrue&page=1&per_page=50"
+    		},
+    		"next": null,
+    		"previous": null
+  		},
+  		"resources": []
+	}`)
+			return
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	})
 
 	muxCF.HandleFunc("/v3", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -330,33 +358,58 @@ func TestNewTimeline(t *testing.T) {
 		tva.WithFrequency(5),
 		tva.WithTenants("default"),
 		tva.WithReload(true),
-		tva.WithMetrics(tva.Metrics{
-			ScrapeInterval: promauto.NewGauge(prometheus.GaugeOpts{
-				Name: "variant_scrape_interval",
-				Help: "The last scrape interval duration",
-			}),
-			DetectedScrapeConfigs: promauto.NewGauge(prometheus.GaugeOpts{
-				Name: "variant_scrape_configs_detected",
-				Help: "Detected scrape configs",
-			}),
-			ManagedNetworkPolicies: promauto.NewGauge(prometheus.GaugeOpts{
-				Name: "variant_network_policies_managed",
-				Help: "The number of network policies being managed by variant",
-			}),
-			TotalIncursions: promauto.NewCounter(prometheus.CounterOpts{
-				Name: "variant_incursions_total",
-				Help: "Total number of incursions (scrapes) done by variant so far",
-			}),
-			ErrorIncursions: promauto.NewCounter(prometheus.CounterOpts{
-				Name: "variant_incursions_error",
-				Help: "Total number of incursions that went wrong",
-			}),
-		}),
 	)
 	if !assert.Nil(t, err) {
 		return
 	}
 	if !assert.NotNil(t, timeline) {
+		return
+	}
+
+	done := timeline.Start()
+
+	if !assert.NotNil(t, done) {
+		return
+	}
+	done <- true
+
+	err = timeline.Reconcile()
+	if !assert.Nil(t, err) {
+		return
+	}
+}
+
+func TestReconcile(t *testing.T) {
+	teardown := setup(t)
+	defer teardown()
+
+	config := tva.Config{
+		Config: clients.Config{
+			Endpoint: serverCF.URL,
+			User:     "ron",
+			Password: "swanson",
+		},
+		PrometheusConfig: prometheusConfig,
+		InternalDomainID: internalDomainID,
+		ThanosID:         thanosID,
+		ThanosURL:        serverThanos.URL,
+	}
+
+	timeline, err := tva.NewTimeline(config,
+		tva.WithDebug(true),
+		tva.WithFrequency(5),
+		tva.WithTenants("default"),
+		tva.WithReload(true),
+	)
+	if !assert.Nil(t, err) {
+		return
+	}
+	if !assert.NotNil(t, timeline) {
+		return
+	}
+
+	err = timeline.Reconcile()
+	if !assert.Nil(t, err) {
 		return
 	}
 }

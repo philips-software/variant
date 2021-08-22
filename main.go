@@ -20,6 +20,34 @@ const (
 	listenPort = 1024 + 116 + 118 + 97
 )
 
+type metrics struct {
+	ScrapeInterval         prometheus.Gauge
+	ManagedNetworkPolicies prometheus.Gauge
+	DetectedScrapeConfigs  prometheus.Gauge
+	TotalIncursions        prometheus.Counter
+	ErrorIncursions        prometheus.Counter
+}
+
+func (m metrics) SetScrapeInterval(v float64) {
+	m.ScrapeInterval.Set(v)
+}
+
+func (m metrics) SetManagedNetworkPolicies(v float64) {
+	m.ManagedNetworkPolicies.Set(v)
+}
+
+func (m metrics) SetDetectedScrapeConfigs(v float64) {
+	m.DetectedScrapeConfigs.Set(v)
+}
+
+func (m metrics) IncTotalIncursions() {
+	m.TotalIncursions.Inc()
+}
+
+func (m metrics) IncErrorIncursions() {
+	m.ErrorIncursions.Inc()
+}
+
 func main() {
 	var vcapApplication vcap.Application
 
@@ -65,34 +93,35 @@ func main() {
 		ThanosID:         thanosID,
 		ThanosURL:        viper.GetString("thanos_url"),
 	}
+	metrics := metrics{
+		ScrapeInterval: promauto.NewGauge(prometheus.GaugeOpts{
+			Name: "variant_scrape_interval",
+			Help: "The last scrape interval duration",
+		}),
+		DetectedScrapeConfigs: promauto.NewGauge(prometheus.GaugeOpts{
+			Name: "variant_scrape_configs_detected",
+			Help: "Detected scrape configs",
+		}),
+		ManagedNetworkPolicies: promauto.NewGauge(prometheus.GaugeOpts{
+			Name: "variant_network_policies_managed",
+			Help: "The number of network policies being managed by variant",
+		}),
+		TotalIncursions: promauto.NewCounter(prometheus.CounterOpts{
+			Name: "variant_incursions_total",
+			Help: "Total number of incursions (scrapes) done by variant so far",
+		}),
+		ErrorIncursions: promauto.NewCounter(prometheus.CounterOpts{
+			Name: "variant_incursions_error",
+			Help: "Total number of incursions that went wrong",
+		}),
+	}
 
 	timeline, err := tva.NewTimeline(config,
 		tva.WithDebug(viper.GetBool("debug")),
 		tva.WithFrequency(refresh),
 		tva.WithTenants(viper.GetString("tenants")),
 		tva.WithReload(viper.GetBool("reload")),
-		tva.WithMetrics(tva.Metrics{
-			ScrapeInterval: promauto.NewGauge(prometheus.GaugeOpts{
-				Name: "variant_scrape_interval",
-				Help: "The last scrape interval duration",
-			}),
-			DetectedScrapeConfigs: promauto.NewGauge(prometheus.GaugeOpts{
-				Name: "variant_scrape_configs_detected",
-				Help: "Detected scrape configs",
-			}),
-			ManagedNetworkPolicies: promauto.NewGauge(prometheus.GaugeOpts{
-				Name: "variant_network_policies_managed",
-				Help: "The number of network policies being managed by variant",
-			}),
-			TotalIncursions: promauto.NewCounter(prometheus.CounterOpts{
-				Name: "variant_incursions_total",
-				Help: "Total number of incursions (scrapes) done by variant so far",
-			}),
-			ErrorIncursions: promauto.NewCounter(prometheus.CounterOpts{
-				Name: "variant_incursions_error",
-				Help: "Total number of incursions that went wrong",
-			}),
-		}),
+		tva.WithMetrics(metrics),
 	)
 	if err != nil {
 		fmt.Printf("error: %v\n", err)

@@ -4,19 +4,9 @@ import (
 	"fmt"
 	"strings"
 	"time"
-
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 type OptionFunc func(timeline *Timeline) error
-
-type Metrics struct {
-	ScrapeInterval         prometheus.Gauge
-	ManagedNetworkPolicies prometheus.Gauge
-	DetectedScrapeConfigs  prometheus.Gauge
-	TotalIncursions        prometheus.Counter
-	ErrorIncursions        prometheus.Counter
-}
 
 // WithDebug sets debugging flag
 func WithDebug(debug bool) OptionFunc {

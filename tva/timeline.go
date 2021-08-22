@@ -106,7 +106,7 @@ func (t *Timeline) Start() (done chan bool) {
 		for {
 			select {
 			case <-done:
-				fmt.Printf("sacred tva is done")
+				fmt.Printf("sacred tva is done\n")
 				return
 			case <-ticker.C:
 				fmt.Printf("reconciling timeline\n")
@@ -148,10 +148,12 @@ func (t *Timeline) Reconcile() error {
 	var startTime = time.Now()
 	defer func() {
 		duration := time.Since(startTime)
-		t.metrics.ScrapeInterval.Set(float64(duration / time.Millisecond))
-		t.metrics.ManagedNetworkPolicies.Set(float64(managedNetworkPolicies))
-		t.metrics.DetectedScrapeConfigs.Set(float64(foundScrapeConfigs))
-		t.metrics.TotalIncursions.Inc()
+		if t.metrics != nil {
+			t.metrics.SetScrapeInterval(float64(duration / time.Millisecond))
+			t.metrics.SetManagedNetworkPolicies(float64(managedNetworkPolicies))
+			t.metrics.SetDetectedScrapeConfigs(float64(foundScrapeConfigs))
+			t.metrics.IncTotalIncursions()
+		}
 	}()
 
 	// Retrieve all relevant apps
@@ -230,7 +232,9 @@ func (t *Timeline) Reconcile() error {
 			err := t.Networking().RemovePolicies([]cfnetv1.Policy{p})
 			if err != nil {
 				fmt.Printf("error removing policy [%v]: %v\n", p, err)
-				t.metrics.ErrorIncursions.Inc()
+				if t.metrics != nil {
+					t.metrics.IncErrorIncursions()
+				}
 			}
 		}
 
@@ -240,7 +244,9 @@ func (t *Timeline) Reconcile() error {
 			err := t.Networking().CreatePolicies([]cfnetv1.Policy{p})
 			if err != nil {
 				fmt.Printf("error creating policy [%v]: %v\n", p, err)
-				t.metrics.ErrorIncursions.Inc()
+				if t.metrics != nil {
+					t.metrics.IncErrorIncursions()
+				}
 			}
 		}
 
@@ -252,7 +258,9 @@ func (t *Timeline) Reconcile() error {
 
 	err = yaml.Unmarshal([]byte(t.startConfig), &newCfg)
 	if err != nil {
-		t.metrics.ErrorIncursions.Inc()
+		if t.metrics != nil {
+			t.metrics.IncErrorIncursions()
+		}
 		return fmt.Errorf("loading config: %w", err)
 	}
 	for _, cfg := range configs {
@@ -261,7 +269,9 @@ func (t *Timeline) Reconcile() error {
 	}
 	output, err := yaml.Marshal(newCfg)
 	if err != nil {
-		t.metrics.ErrorIncursions.Inc()
+		if t.metrics != nil {
+			t.metrics.IncErrorIncursions()
+		}
 		return fmt.Errorf("yaml.Marshal: %w", err)
 	}
 	if t.debug {
