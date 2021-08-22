@@ -24,7 +24,7 @@ var (
 	muxLogin    *http.ServeMux
 	serverLogin *httptest.Server
 
-	internalDomainID = "xxx"
+	internalDomainID = "409ec4df-d54d-4a93-8428-94999ecb50bc"
 	thanosID         = "yyy"
 	prometheusConfig = "/tmp/prometheus.yml"
 )
@@ -73,6 +73,119 @@ scrape_configs:
       - targets: ['localhost:1355']`), 0644)
 	prometheusConfig = f.Name()
 
+	muxCF.HandleFunc("/networking/v1/external/policies", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
+			w.WriteHeader(http.StatusOK)
+			_, _ = io.WriteString(w, `{}`)
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	})
+
+	muxCF.HandleFunc("/v2/apps/9e22fe38-38ce-4af6-b529-44d2853d072f/routes", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, `{
+  "total_results": 1,
+  "total_pages": 1,
+  "prev_url": null,
+  "next_url": null,
+  "resources": [
+    {
+      "metadata": {
+        "guid": "2dd5eb59-ecb5-4b88-a92d-f9776e7d495d",
+        "url": "/v2/routes/2dd5eb59-ecb5-4b88-a92d-f9776e7d495d",
+        "created_at": "2021-07-30T09:47:22Z",
+        "updated_at": "2021-07-30T09:47:22Z"
+      },
+      "entity": {
+        "host": "ceres",
+        "path": "",
+        "domain_guid": "409ec4df-d54d-4a93-8428-94999ecb50bc",
+        "space_guid": "b6b0855f-df85-41c8-8b6f-52b3a1eabb3d",
+        "service_instance_guid": null,
+        "port": null,
+        "domain_url": "/v2/shared_domains/409ec4df-d54d-4a93-8428-94999ecb50bc",
+        "space_url": "/v2/spaces/b6b0855f-df85-41c8-8b6f-52b3a1eabb3d",
+        "apps_url": "/v2/routes/2dd5eb59-ecb5-4b88-a92d-f9776e7d495d/apps",
+        "route_mappings_url": "/v2/routes/2dd5eb59-ecb5-4b88-a92d-f9776e7d495d/route_mappings"
+      }
+    }
+  ]
+}`)
+	})
+
+	muxCF.HandleFunc("/v3/apps/9e22fe38-38ce-4af6-b529-44d2853d072f/processes", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, `{
+  "pagination": {
+    "total_results": 1,
+    "total_pages": 1,
+    "first": {
+      "href": "`+serverCF.URL+`/v3/apps/9e22fe38-38ce-4af6-b529-44d2853d072f/processes?page=1&per_page=50"
+    },
+    "last": {
+      "href": "`+serverCF.URL+`/v3/apps/9e22fe38-38ce-4af6-b529-44d2853d072f/processes?page=1&per_page=50"
+    },
+    "next": null,
+    "previous": null
+  },
+  "resources": [
+    {
+      "guid": "9e22fe38-38ce-4af6-b529-44d2853d072f",
+      "created_at": "2021-07-30T09:47:23Z",
+      "updated_at": "2021-08-09T06:04:23Z",
+      "type": "web",
+      "command": "hello world",
+      "instances": 1,
+      "memory_in_mb": 512,
+      "disk_in_mb": 1024,
+      "health_check": {
+        "type": "none",
+        "data": {
+          "timeout": null,
+          "invocation_timeout": null
+        }
+      },
+      "relationships": {
+        "app": {
+          "data": {
+            "guid": "9e22fe38-38ce-4af6-b529-44d2853d072f"
+          }
+        },
+        "revision": {
+          "data": {
+            "guid": "f2eb0f63-62c1-40b5-86bb-fc3c72119109"
+          }
+        }
+      },
+      "metadata": {
+        "labels": {},
+        "annotations": {}
+      },
+      "links": {
+        "self": {
+          "href": "`+serverCF.URL+`/v3/processes/9e22fe38-38ce-4af6-b529-44d2853d072f"
+        },
+        "scale": {
+          "href": "`+serverCF.URL+`/v3/processes/9e22fe38-38ce-4af6-b529-44d2853d072f/actions/scale",
+          "method": "POST"
+        },
+        "app": {
+          "href": "`+serverCF.URL+`/v3/apps/9e22fe38-38ce-4af6-b529-44d2853d072f"
+        },
+        "space": {
+          "href": "`+serverCF.URL+`/v3/spaces/b6b0855f-df85-41c8-8b6f-52b3a1eabb3d"
+        },
+        "stats": {
+          "href": "`+serverCF.URL+`/v3/processes/9e22fe38-38ce-4af6-b529-44d2853d072f/stats"
+        }
+      }
+    }
+  ]
+}`)
+	})
+
 	muxCF.HandleFunc("/v3/apps", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
@@ -84,7 +197,7 @@ scrape_configs:
 			w.WriteHeader(http.StatusOK)
 			_, _ = io.WriteString(w, `{
   		"pagination": {
-    		"total_results": 0,
+    		"total_results": 1,
     		"total_pages": 1,
     		"first": {
      		 	"href": "`+serverCF.URL+`/v3/apps?label_selector=variant.tva%2Fexporter%3Dtrue&page=1&per_page=50"
@@ -95,7 +208,78 @@ scrape_configs:
     		"next": null,
     		"previous": null
   		},
-  		"resources": []
+  		"resources": [
+			{
+      "guid": "9e22fe38-38ce-4af6-b529-44d2853d072f",
+      "created_at": "2021-07-30T09:47:23Z",
+      "updated_at": "2021-08-09T06:04:23Z",
+      "name": "ceres",
+      "state": "STARTED",
+      "lifecycle": {
+        "type": "docker",
+        "data": {}
+      },
+      "relationships": {
+        "space": {
+          "data": {
+            "guid": "b6b0855f-df85-41c8-8b6f-52b3a1eabb3d"
+          }
+        }
+      },
+      "metadata": {
+        "labels": {
+          "variant.tva/exporter": "true"
+        },
+        "annotations": {
+          "prometheus.exporter.path": "/metrics",
+          "prometheus.exporter.port": "8080"
+        }
+      },
+      "links": {
+        "self": {
+          "href": "`+serverCF.URL+`/v3/apps/9e22fe38-38ce-4af6-b529-44d2853d072f"
+        },
+        "environment_variables": {
+          "href": "`+serverCF.URL+`/v3/apps/9e22fe38-38ce-4af6-b529-44d2853d072f/environment_variables"
+        },
+        "space": {
+          "href": "`+serverCF.URL+`/v3/spaces/b6b0855f-df85-41c8-8b6f-52b3a1eabb3d"
+        },
+        "processes": {
+          "href": "`+serverCF.URL+`/v3/apps/9e22fe38-38ce-4af6-b529-44d2853d072f/processes"
+        },
+        "packages": {
+          "href": "`+serverCF.URL+`/v3/apps/9e22fe38-38ce-4af6-b529-44d2853d072f/packages"
+        },
+        "current_droplet": {
+          "href": "`+serverCF.URL+`/v3/apps/9e22fe38-38ce-4af6-b529-44d2853d072f/droplets/current"
+        },
+        "droplets": {
+          "href": "`+serverCF.URL+`/v3/apps/9e22fe38-38ce-4af6-b529-44d2853d072f/droplets"
+        },
+        "tasks": {
+          "href": "`+serverCF.URL+`/v3/apps/9e22fe38-38ce-4af6-b529-44d2853d072f/tasks"
+        },
+        "start": {
+          "href": "`+serverCF.URL+`/v3/apps/9e22fe38-38ce-4af6-b529-44d2853d072f/actions/start",
+          "method": "POST"
+        },
+        "stop": {
+          "href": "`+serverCF.URL+`/v3/apps/9e22fe38-38ce-4af6-b529-44d2853d072f/actions/stop",
+          "method": "POST"
+        },
+        "revisions": {
+          "href": "`+serverCF.URL+`/v3/apps/9e22fe38-38ce-4af6-b529-44d2853d072f/revisions"
+        },
+        "deployed_revisions": {
+          "href": "`+serverCF.URL+`/v3/apps/9e22fe38-38ce-4af6-b529-44d2853d072f/revisions/deployed"
+        },
+        "features": {
+          "href": "`+serverCF.URL+`/v3/apps/9e22fe38-38ce-4af6-b529-44d2853d072f/features"
+        }
+      }
+    }
+		]
 	}`)
 			return
 		default:
