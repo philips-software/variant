@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"path"
 	"strconv"
 	"strings"
 	"sync"
@@ -66,6 +67,8 @@ type App struct {
 	SpaceName string
 }
 
+type ruleFiles map[string][]rules.RuleNode
+
 func NewTimeline(config Config, opts ...OptionFunc) (*Timeline, error) {
 	session, err := clients.NewSession(config.Config)
 	if err != nil {
@@ -125,7 +128,23 @@ func (t *Timeline) Start() (done chan bool) {
 	return doneChan
 }
 
-func (t *Timeline) saveAndReload(newConfig string) error {
+func (t *Timeline) saveAndReload(newConfig string, files ruleFiles) error {
+	folder := path.Dir(t.config.PrometheusConfig)
+
+	for n, r := range files {
+		content := rules.RuleGroups{
+			Groups: []rules.RuleGroup{
+				{
+					Name:  "RuleGroup",
+					Rules: r,
+				},
+			},
+		}
+		ruleFile := path.Join(folder, n)
+		output, _ := yaml.Marshal(content)
+		_ = ioutil.WriteFile(ruleFile, output, 0644)
+	}
+
 	if err := ioutil.WriteFile(t.config.PrometheusConfig, []byte(newConfig), 0644); err != nil {
 		return fmt.Errorf("save config: %w", err)
 	}
@@ -195,13 +214,15 @@ func (t *Timeline) Reconcile() error {
 	appsWithRules = uniqApps(appsWithRules)
 
 	// Rules
+	ruleFilesToSave := make(ruleFiles)
 	for _, app := range appsWithRules {
-		rules, err := t.renderRules(app)
+		entries, err := t.parseRules(app)
 		if err != nil {
 			fmt.Printf("error: %v\n", err)
 			continue
 		}
-		fmt.Printf("%v\n", rules)
+		ruleFilesToSave[app.GUID] = entries
+
 	}
 
 	if t.debug {
@@ -294,6 +315,9 @@ func (t *Timeline) Reconcile() error {
 		n := cfg
 		newCfg.ScrapeConfigs = append(newCfg.ScrapeConfigs, &n)
 	}
+	for r := range ruleFilesToSave {
+		newCfg.RuleFiles = append(newCfg.RuleFiles, fmt.Sprintf("%s.yml", r))
+	}
 
 	output, err := yaml.Marshal(newCfg)
 	if err != nil {
@@ -306,7 +330,7 @@ func (t *Timeline) Reconcile() error {
 		fmt.Printf("---config start---\n%s\n---config end---\n", string(output))
 	}
 
-	return t.saveAndReload(string(output))
+	return t.saveAndReload(string(output), ruleFilesToSave)
 }
 
 func (t *Timeline) Targets() []promconfig.ScrapeConfig {
@@ -345,8 +369,8 @@ func (t *Timeline) generatePoliciesAndScrapeConfigs(app App) ([]cfnetv1.Policy, 
 		}
 	}
 	scrapePath := "/metrics" // Default
-	if path := metadata.Annotations[AnnotationExporterPath]; path != nil {
-		scrapePath = *path
+	if exporterPath := metadata.Annotations[AnnotationExporterPath]; exporterPath != nil {
+		scrapePath = *exporterPath
 	}
 	jobName := app.Name // Default
 	if name := metadata.Annotations[AnnotationExporterJobName]; name != nil {
@@ -408,8 +432,8 @@ func (t *Timeline) generatePoliciesAndScrapeConfigs(app App) ([]cfnetv1.Policy, 
 			return policies, configs, err
 		}
 		targetsPath := "/targets"
-		if path := metadata.Annotations[AnnotationTargetsPath]; path != nil {
-			targetsPath = *path
+		if p := metadata.Annotations[AnnotationTargetsPath]; p != nil {
+			targetsPath = *p
 		}
 		targetsURL := fmt.Sprintf("http://%s:%d%s", internalHost, targetsPort, targetsPath)
 		policies = append(policies, t.newPolicy(app.GUID, targetsPort))
@@ -514,7 +538,7 @@ func (t *Timeline) metadataRetrieve(m metadataType, guid string) (Metadata, erro
 	return metadataReq.Metadata, nil
 }
 
-func (t *Timeline) renderRules(app resources.Application) ([]rules.RuleNode, error) {
+func (t *Timeline) parseRules(app resources.Application) ([]rules.RuleNode, error) {
 	var foundRules []rules.RuleNode
 
 	metadata, err := t.metadataRetrieve(appMetadata, app.GUID)
