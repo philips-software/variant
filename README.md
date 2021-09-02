@@ -6,6 +6,7 @@ We'll leverage metadata (labels, annotations) resource enrichment of the Cloud f
 service discovery and configuration of resources. What variant does:
 - Automatic network-policy management
 - Discovery of scrape targets
+- Rules discovery
 - A demonstration vehicle for using labels and annotations in Cloud foundry
 
 # Building
