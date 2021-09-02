@@ -10,7 +10,7 @@ replace github.com/cloudfoundry/sonde-go => github.com/cloudfoundry/sonde-go v0.
 
 replace code.cloudfoundry.org/go-log-cache => code.cloudfoundry.org/go-log-cache v1.0.1-0.20200316170138-f466e0302c34
 
-replace github.com/percona/promconfig => github.com/loafoe/promconfig v0.2.2-0.20210629184908-34290bee8a85
+replace github.com/percona/promconfig => github.com/loafoe/promconfig v0.2.2-0.20210901093248-bf16599578c0
 
 require (
 	code.cloudfoundry.org/cfnetworking-cli-api v0.0.0-20190103195135-4b04f26287a6
