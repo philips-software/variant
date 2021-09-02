@@ -221,8 +221,7 @@ func (t *Timeline) Reconcile() error {
 			fmt.Printf("error: %v\n", err)
 			continue
 		}
-		ruleFilesToSave[app.GUID] = entries
-
+		ruleFilesToSave[fmt.Sprintf("%s.yml", app.GUID)] = entries
 	}
 
 	if t.debug {
@@ -316,7 +315,7 @@ func (t *Timeline) Reconcile() error {
 		newCfg.ScrapeConfigs = append(newCfg.ScrapeConfigs, &n)
 	}
 	for r := range ruleFilesToSave {
-		newCfg.RuleFiles = append(newCfg.RuleFiles, fmt.Sprintf("%s.yml", r))
+		newCfg.RuleFiles = append(newCfg.RuleFiles, r)
 	}
 
 	output, err := yaml.Marshal(newCfg)
