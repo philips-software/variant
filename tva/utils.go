@@ -2,7 +2,24 @@ package tva
 
 import (
 	"code.cloudfoundry.org/cfnetworking-cli-api/cfnetworking/cfnetv1"
+	"code.cloudfoundry.org/cli/resources"
 )
+
+func uniqApps(apps []resources.Application) []resources.Application {
+	var result []resources.Application
+	for _, p := range apps {
+		count := 0
+		for _, c := range result {
+			if c.GUID == p.GUID {
+				count++
+			}
+		}
+		if count == 0 { // Unique
+			result = append(result, p)
+		}
+	}
+	return result
+}
 
 func uniqPolicies(policies []cfnetv1.Policy) []cfnetv1.Policy {
 	var result []cfnetv1.Policy

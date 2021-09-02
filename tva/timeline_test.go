@@ -185,15 +185,9 @@ scrape_configs:
   ]
 }`)
 	})
-
-	muxCF.HandleFunc("/v3/apps", func(w http.ResponseWriter, r *http.Request) {
+	appsHandler := func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
-			val := r.URL.Query().Get("label_selector")
-			if !assert.Equal(t, "variant.tva/exporter=true", val) {
-				w.WriteHeader(http.StatusInternalServerError)
-				return
-			}
 			w.WriteHeader(http.StatusOK)
 			_, _ = io.WriteString(w, `{
   		"pagination": {
@@ -228,11 +222,13 @@ scrape_configs:
       },
       "metadata": {
         "labels": {
-          "variant.tva/exporter": "true"
+          "variant.tva/exporter": "true",
+          "variant.tva/rules": "true"
         },
         "annotations": {
           "prometheus.exporter.path": "/metrics",
-          "prometheus.exporter.port": "8080"
+          "prometheus.exporter.port": "8080",
+		  "prometheus.rules.json": "[{\"annotations\":{\"description\":\"{{ $labels.instance }} waiting http connections is at {{ $value }}\",\"summary\":\"Instance {{ $labels.instance }} has more than 2 waiting connections per minute\"},\"expr\":\"kong_nginx_http_current_connections{state=\\\"waiting\\\"} \\u003e 2\",\"for\":\"1m\",\"labels\":{\"severity\":\"critical\"},\"alert\":\"KongWaitingConnections\"}]"
         }
       },
       "links": {
@@ -285,7 +281,92 @@ scrape_configs:
 		default:
 			w.WriteHeader(http.StatusInternalServerError)
 		}
-	})
+	}
+
+	appHandler := func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			w.WriteHeader(http.StatusOK)
+			_, _ = io.WriteString(w, `{
+      "guid": "9e22fe38-38ce-4af6-b529-44d2853d072f",
+      "created_at": "2021-07-30T09:47:23Z",
+      "updated_at": "2021-08-09T06:04:23Z",
+      "name": "ceres",
+      "state": "STARTED",
+      "lifecycle": {
+        "type": "docker",
+        "data": {}
+      },
+      "relationships": {
+        "space": {
+          "data": {
+            "guid": "b6b0855f-df85-41c8-8b6f-52b3a1eabb3d"
+          }
+        }
+      },
+      "metadata": {
+        "labels": {
+          "variant.tva/exporter": "true",
+          "variant.tva/rules": "true"
+        },
+        "annotations": {
+          "prometheus.exporter.path": "/metrics",
+          "prometheus.exporter.port": "8080",
+		  "prometheus.rules.json": "[{\"annotations\":{\"description\":\"{{ $labels.instance }} waiting http connections is at {{ $value }}\",\"summary\":\"Instance {{ $labels.instance }} has more than 2 waiting connections per minute\"},\"expr\":\"kong_nginx_http_current_connections{state=\\\"waiting\\\"} \\u003e 2\",\"for\":\"1m\",\"labels\":{\"severity\":\"critical\"},\"alert\":\"KongWaitingConnections\"}]"
+        }
+      },
+      "links": {
+        "self": {
+          "href": "`+serverCF.URL+`/v3/apps/9e22fe38-38ce-4af6-b529-44d2853d072f"
+        },
+        "environment_variables": {
+          "href": "`+serverCF.URL+`/v3/apps/9e22fe38-38ce-4af6-b529-44d2853d072f/environment_variables"
+        },
+        "space": {
+          "href": "`+serverCF.URL+`/v3/spaces/b6b0855f-df85-41c8-8b6f-52b3a1eabb3d"
+        },
+        "processes": {
+          "href": "`+serverCF.URL+`/v3/apps/9e22fe38-38ce-4af6-b529-44d2853d072f/processes"
+        },
+        "packages": {
+          "href": "`+serverCF.URL+`/v3/apps/9e22fe38-38ce-4af6-b529-44d2853d072f/packages"
+        },
+        "current_droplet": {
+          "href": "`+serverCF.URL+`/v3/apps/9e22fe38-38ce-4af6-b529-44d2853d072f/droplets/current"
+        },
+        "droplets": {
+          "href": "`+serverCF.URL+`/v3/apps/9e22fe38-38ce-4af6-b529-44d2853d072f/droplets"
+        },
+        "tasks": {
+          "href": "`+serverCF.URL+`/v3/apps/9e22fe38-38ce-4af6-b529-44d2853d072f/tasks"
+        },
+        "start": {
+          "href": "`+serverCF.URL+`/v3/apps/9e22fe38-38ce-4af6-b529-44d2853d072f/actions/start",
+          "method": "POST"
+        },
+        "stop": {
+          "href": "`+serverCF.URL+`/v3/apps/9e22fe38-38ce-4af6-b529-44d2853d072f/actions/stop",
+          "method": "POST"
+        },
+        "revisions": {
+          "href": "`+serverCF.URL+`/v3/apps/9e22fe38-38ce-4af6-b529-44d2853d072f/revisions"
+        },
+        "deployed_revisions": {
+          "href": "`+serverCF.URL+`/v3/apps/9e22fe38-38ce-4af6-b529-44d2853d072f/revisions/deployed"
+        },
+        "features": {
+          "href": "`+serverCF.URL+`/v3/apps/9e22fe38-38ce-4af6-b529-44d2853d072f/features"
+        }
+      }
+    }`)
+			return
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}
+
+	muxCF.HandleFunc("/v3/apps/9e22fe38-38ce-4af6-b529-44d2853d072f", appHandler)
+	muxCF.HandleFunc("/v3/apps", appsHandler)
 
 	muxCF.HandleFunc("/v3", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
