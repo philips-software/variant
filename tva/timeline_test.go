@@ -228,7 +228,8 @@ scrape_configs:
         "annotations": {
           "prometheus.exporter.path": "/metrics",
           "prometheus.exporter.port": "8080",
-		  "prometheus.rules.json": "[{\"annotations\":{\"description\":\"{{ $labels.instance }} waiting http connections is at {{ $value }}\",\"summary\":\"Instance {{ $labels.instance }} has more than 2 waiting connections per minute\"},\"expr\":\"kong_nginx_http_current_connections{state=\\\"waiting\\\"} \\u003e 2\",\"for\":\"1m\",\"labels\":{\"severity\":\"critical\"},\"alert\":\"KongWaitingConnections\"}]"
+		  "prometheus.rules.json": "[{\"annotations\":{\"description\":\"{{ $labels.instance }} waiting http connections is at {{ $value }}\",\"summary\":\"Instance {{ $labels.instance }} has more than 2 waiting connections per minute\"},\"expr\":\"kong_nginx_http_current_connections{state=\\\"waiting\\\"} \\u003e 2\",\"for\":\"1m\",\"labels\":{\"severity\":\"critical\"},\"alert\":\"KongWaitingConnections\"}]",
+          "prometheus.rules.blabla.json": "{\"alert\":\"TransactionsHSDPPG\",\"annotations\":{\"description\":\"{{ $labels.instance }}, this is just a test alert\",\"summary\":\"Instance {{ $labels.instance }} has high transaction rate\"},\"expr\":\"irate(pg_stat_database_xact_commit{datname=~\\\"hsdp_pg\\\"}[5m]) \\u003e 8\",\"for\":\"1m\",\"labels\":{\"severity\":\"critical\"}}"
         }
       },
       "links": {
@@ -312,7 +313,8 @@ scrape_configs:
         "annotations": {
           "prometheus.exporter.path": "/metrics",
           "prometheus.exporter.port": "8080",
-		  "prometheus.rules.json": "[{\"annotations\":{\"description\":\"{{ $labels.instance }} waiting http connections is at {{ $value }}\",\"summary\":\"Instance {{ $labels.instance }} has more than 2 waiting connections per minute\"},\"expr\":\"kong_nginx_http_current_connections{state=\\\"waiting\\\"} \\u003e 2\",\"for\":\"1m\",\"labels\":{\"severity\":\"critical\"},\"alert\":\"KongWaitingConnections\"}]"
+		  "prometheus.rules.json": "[{\"annotations\":{\"description\":\"{{ $labels.instance }} waiting http connections is at {{ $value }}\",\"summary\":\"Instance {{ $labels.instance }} has more than 2 waiting connections per minute\"},\"expr\":\"kong_nginx_http_current_connections{state=\\\"waiting\\\"} \\u003e 2\",\"for\":\"1m\",\"labels\":{\"severity\":\"critical\"},\"alert\":\"KongWaitingConnections\"}]",
+          "prometheus.rules.1.json": "{\"alert\":\"TransactionsHSDPPG\",\"annotations\":{\"description\":\"{{ $labels.instance }}, this is just a test alert\",\"summary\":\"Instance {{ $labels.instance }} has high transaction rate\"},\"expr\":\"irate(pg_stat_database_xact_commit{datname=~\\\"hsdp_pg\\\"}[5m]) \\u003e 8\",\"for\":\"1m\",\"labels\":{\"severity\":\"critical\"}}"
         }
       },
       "links": {
@@ -637,41 +639,6 @@ func TestNewTimeline(t *testing.T) {
 		return
 	}
 	done <- true
-
-	err = timeline.Reconcile()
-	if !assert.Nil(t, err) {
-		return
-	}
-}
-
-func TestReconcile(t *testing.T) {
-	teardown := setup(t)
-	defer teardown()
-
-	config := tva.Config{
-		Config: clients.Config{
-			Endpoint: serverCF.URL,
-			User:     "ron",
-			Password: "swanson",
-		},
-		PrometheusConfig: prometheusConfig,
-		InternalDomainID: internalDomainID,
-		ThanosID:         thanosID,
-		ThanosURL:        serverThanos.URL,
-	}
-
-	timeline, err := tva.NewTimeline(config,
-		tva.WithDebug(true),
-		tva.WithFrequency(5),
-		tva.WithTenants("default"),
-		tva.WithReload(true),
-	)
-	if !assert.Nil(t, err) {
-		return
-	}
-	if !assert.NotNil(t, timeline) {
-		return
-	}
 
 	err = timeline.Reconcile()
 	if !assert.Nil(t, err) {

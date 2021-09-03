@@ -1,19 +1,17 @@
 package tva
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"path"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"code.cloudfoundry.org/cfnetworking-cli-api/cfnetworking/cfnetv1"
-	"code.cloudfoundry.org/cli/api/cloudcontroller/ccerror"
 	"code.cloudfoundry.org/cli/api/cloudcontroller/ccv3"
 	"code.cloudfoundry.org/cli/resources"
 	clients "github.com/cloudfoundry-community/go-cf-clients-helper"
@@ -23,19 +21,22 @@ import (
 )
 
 const (
-	ExporterLabel                              = "variant.tva/exporter"
-	TenantLabel                                = "variant.tva/tenant"
-	RulesLabel                                 = "variant.tva/rules"
-	AnnotationInstanceName                     = "prometheus.exporter.instance_name"
-	AnnotationInstanceSourceRegex              = "prometheus.exporter.instance_source_regex"
-	AnnotationExporterPort                     = "prometheus.exporter.port"
-	AnnotationExporterPath                     = "prometheus.exporter.path"
-	AnnotationExporterScheme                   = "prometheus.exporter.scheme"
-	AnnotationExporterJobName                  = "prometheus.exporter.job_name"
-	AnnotationTargetsPort                      = "prometheus.targets.port"
-	AnnotationTargetsPath                      = "prometheus.targets.path"
-	AnnotationRulesJSON                        = "prometheus.rules.json"
-	appMetadata                   metadataType = "apps"
+	ExporterLabel                 = "variant.tva/exporter"
+	TenantLabel                   = "variant.tva/tenant"
+	RulesLabel                    = "variant.tva/rules"
+	AnnotationInstanceName        = "prometheus.exporter.instance_name"
+	AnnotationInstanceSourceRegex = "prometheus.exporter.instance_source_regex"
+	AnnotationExporterPort        = "prometheus.exporter.port"
+	AnnotationExporterPath        = "prometheus.exporter.path"
+	AnnotationExporterScheme      = "prometheus.exporter.scheme"
+	AnnotationExporterJobName     = "prometheus.exporter.job_name"
+	AnnotationTargetsPort         = "prometheus.targets.port"
+	AnnotationTargetsPath         = "prometheus.targets.path"
+	AnnotationRulesJSON           = "prometheus.rules.json"
+)
+
+var (
+	AnnotationRulesIndexJSONRegex = regexp.MustCompile(`prometheus\.rules\.(\d+|\w+)\.json`)
 )
 
 type Config struct {
@@ -135,7 +136,7 @@ func (t *Timeline) saveAndReload(newConfig string, files ruleFiles) error {
 		content := rules.RuleGroups{
 			Groups: []rules.RuleGroup{
 				{
-					Name:  "RuleGroup",
+					Name:  "VariantGroup",
 					Rules: r,
 				},
 			},
@@ -210,13 +211,18 @@ func (t *Timeline) Reconcile() error {
 		appsWithRules = []resources.Application{}
 	}
 
-	apps = uniqApps(apps)
-	appsWithRules = uniqApps(appsWithRules)
+	apps = UniqApps(apps)
+	appsWithRules = UniqApps(appsWithRules)
 
 	// Rules
 	ruleFilesToSave := make(ruleFiles)
 	for _, app := range appsWithRules {
-		entries, err := t.parseRules(app)
+		metadata, err := MetadataRetrieve(t.Session.Raw(), app.GUID)
+		if err != nil {
+			// TODO: record error here
+			continue
+		}
+		entries, err := ParseRules(metadata)
 		if err != nil {
 			fmt.Printf("error: %v\n", err)
 			continue
@@ -232,7 +238,7 @@ func (t *Timeline) Reconcile() error {
 	var generatedPolicies []cfnetv1.Policy
 	for _, app := range apps {
 		// Erase app from startTime if it shows up on the timeline
-		t.startState = prunePoliciesByDestination(t.startState, app.GUID)
+		t.startState = PrunePoliciesByDestination(t.startState, app.GUID)
 		// Calculate policies and scrape_config sections for app
 		policies, endpoints, _ := t.generatePoliciesAndScrapeConfigs(App{Application: app})
 		generatedPolicies = append(generatedPolicies, policies...)
@@ -240,7 +246,7 @@ func (t *Timeline) Reconcile() error {
 	}
 	foundScrapeConfigs = len(configs)
 	managedNetworkPolicies = len(generatedPolicies)
-	desiredState := uniqPolicies(append(t.startState, generatedPolicies...))
+	desiredState := UniqPolicies(append(t.startState, generatedPolicies...))
 	currentState := t.getCurrentPolicies()
 	if t.debug {
 		fmt.Printf("desired: %d, current: %d\n", len(desiredState), len(currentState))
@@ -250,7 +256,7 @@ func (t *Timeline) Reconcile() error {
 	for _, p := range desiredState {
 		found := false
 		for _, q := range currentState {
-			if policyEqual(p, q) {
+			if PolicyEqual(p, q) {
 				found = true
 			}
 		}
@@ -262,7 +268,7 @@ func (t *Timeline) Reconcile() error {
 	for _, p := range currentState {
 		found := false
 		for _, q := range desiredState {
-			if policyEqual(p, q) {
+			if PolicyEqual(p, q) {
 				found = true
 			}
 		}
@@ -356,7 +362,8 @@ func (t *Timeline) generatePoliciesAndScrapeConfigs(app App) ([]cfnetv1.Policy, 
 	if instanceCount == 0 {
 		return policies, configs, fmt.Errorf("no instances found")
 	}
-	metadata, err := t.metadataRetrieve(appMetadata, app.GUID)
+	rawClient := t.Raw()
+	metadata, err := MetadataRetrieve(rawClient, app.GUID)
 	if err != nil {
 		return policies, configs, fmt.Errorf("metadataRetrieve: %w", err)
 	}
@@ -493,65 +500,4 @@ func (t *Timeline) internalHost(app App) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("no apps.internal route found")
-}
-
-func (t *Timeline) metadataRetrieve(m metadataType, guid string) (Metadata, error) {
-	client := t.Session.Raw()
-	req, err := client.NewRequest("GET", pathMetadata(m, guid), nil)
-	if err != nil {
-		return Metadata{}, err
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return Metadata{}, err
-	}
-
-	defer func() {
-		err := resp.Body.Close()
-		if err != nil {
-			panic(err)
-		}
-	}()
-
-	b, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return Metadata{}, err
-	}
-
-	if resp.StatusCode != 200 {
-		if resp.StatusCode == 404 {
-			return Metadata{}, nil
-		}
-		return Metadata{}, ccerror.RawHTTPStatusError{
-			StatusCode:  resp.StatusCode,
-			RawResponse: b,
-		}
-	}
-
-	var metadataReq MetadataRequest
-	err = json.Unmarshal(b, &metadataReq)
-	if err != nil {
-		return Metadata{}, err
-	}
-	return metadataReq.Metadata, nil
-}
-
-func (t *Timeline) parseRules(app resources.Application) ([]rules.RuleNode, error) {
-	var foundRules []rules.RuleNode
-
-	metadata, err := t.metadataRetrieve(appMetadata, app.GUID)
-
-	if err != nil {
-		return nil, fmt.Errorf("metadataRetrieve: %w", err)
-	}
-	rulesJSON := metadata.Annotations[AnnotationRulesJSON]
-	if rulesJSON == nil {
-		return foundRules, fmt.Errorf("missing annotation '%s'", AnnotationRulesJSON)
-	}
-	err = json.NewDecoder(bytes.NewBufferString(*rulesJSON)).Decode(&foundRules)
-	if err != nil {
-		return foundRules, err
-	}
-	return foundRules, nil
 }
