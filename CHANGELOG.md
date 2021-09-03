@@ -3,6 +3,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
+## v0.0.22
+- Support Rules
+
 ## v0.0.12
 - Fix over-pruning of network policies
 - Initial support for instant naming: `prometheus.exporter.instance_name`
