@@ -3,7 +3,7 @@ A sidecar for [Thanos](https://github.com/philips-labs/terraform-cloudfoundry-th
 It also takes care of maintaing the network policies so Thanos/Prometheus can do their scraping. 
 
 ## Internals
-Uses the Cloud foundry API to:
+Uses the Cloud foundry API for:
 - Discovery of metrics endpoints and scrape targets through CF labels/annotations
 - Discovery of rules (alerts, recorders) through CF labels/annotations
 - Creates `rule_files_*.yml` containing discovered rules
