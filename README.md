@@ -70,5 +70,5 @@ Annotations contain the configurations for metrics and rule definitions
 | `prometheus.rules.json` | JSON string of `[]Rule` | `jsonecode('[]')`
 | `prometheus.rules.*.json` | JSON string of a `Rule` object |  |
 
-# License
+## License
 License is MIT
