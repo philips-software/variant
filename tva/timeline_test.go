@@ -228,7 +228,8 @@ scrape_configs:
         "annotations": {
           "prometheus.exporter.path": "/metrics",
           "prometheus.exporter.port": "8080",
-		  "prometheus.rules.json": "[{\"annotations\":{\"description\":\"{{ $labels.instance }} waiting http connections is at {{ $value }}\",\"summary\":\"Instance {{ $labels.instance }} has more than 2 waiting connections per minute\"},\"expr\":\"kong_nginx_http_current_connections{state=\\\"waiting\\\"} \\u003e 2\",\"for\":\"1m\",\"labels\":{\"severity\":\"critical\"},\"alert\":\"KongWaitingConnections\"}]"
+		  "prometheus.rules.json": "[{\"annotations\":{\"description\":\"{{ $labels.instance }} waiting http connections is at {{ $value }}\",\"summary\":\"Instance {{ $labels.instance }} has more than 2 waiting connections per minute\"},\"expr\":\"kong_nginx_http_current_connections{state=\\\"waiting\\\"} \\u003e 2\",\"for\":\"1m\",\"labels\":{\"severity\":\"critical\"},\"alert\":\"KongWaitingConnections\"}]",
+          "prometheus.rules.blabla.json": "{\"alert\":\"TransactionsHSDPPG\",\"annotations\":{\"description\":\"{{ $labels.instance }}, this is just a test alert\",\"summary\":\"Instance {{ $labels.instance }} has high transaction rate\"},\"expr\":\"irate(pg_stat_database_xact_commit{datname=~\\\"hsdp_pg\\\"}[5m]) \\u003e 8\",\"for\":\"1m\",\"labels\":{\"severity\":\"critical\"}}"
         }
       },
       "links": {
@@ -312,7 +313,8 @@ scrape_configs:
         "annotations": {
           "prometheus.exporter.path": "/metrics",
           "prometheus.exporter.port": "8080",
-		  "prometheus.rules.json": "[{\"annotations\":{\"description\":\"{{ $labels.instance }} waiting http connections is at {{ $value }}\",\"summary\":\"Instance {{ $labels.instance }} has more than 2 waiting connections per minute\"},\"expr\":\"kong_nginx_http_current_connections{state=\\\"waiting\\\"} \\u003e 2\",\"for\":\"1m\",\"labels\":{\"severity\":\"critical\"},\"alert\":\"KongWaitingConnections\"}]"
+		  "prometheus.rules.json": "[{\"annotations\":{\"description\":\"{{ $labels.instance }} waiting http connections is at {{ $value }}\",\"summary\":\"Instance {{ $labels.instance }} has more than 2 waiting connections per minute\"},\"expr\":\"kong_nginx_http_current_connections{state=\\\"waiting\\\"} \\u003e 2\",\"for\":\"1m\",\"labels\":{\"severity\":\"critical\"},\"alert\":\"KongWaitingConnections\"}]",
+          "prometheus.rules.1.json": "{\"alert\":\"TransactionsHSDPPG\",\"annotations\":{\"description\":\"{{ $labels.instance }}, this is just a test alert\",\"summary\":\"Instance {{ $labels.instance }} has high transaction rate\"},\"expr\":\"irate(pg_stat_database_xact_commit{datname=~\\\"hsdp_pg\\\"}[5m]) \\u003e 8\",\"for\":\"1m\",\"labels\":{\"severity\":\"critical\"}}"
         }
       },
       "links": {
