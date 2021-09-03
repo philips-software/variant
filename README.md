@@ -1,19 +1,25 @@
 # Variant
-A sidecar for [Thanos](https://github.com/philips-labs/terraform-cloudfoundry-thanos) to discover scrape endpoints and rules.
-It also takes care of maintaing the network policies so Thanos/Prometheus can do their scraping. 
+
+A sidecar for [Prometheus / Thanos](https://github.com/philips-labs/terraform-cloudfoundry-thanos) to discover scrape endpoints and rules.
+It also manages the required CF network policies to support scraping via `apps.internal` routes.
 
 ## Internals
-Uses the Cloud foundry API for:
-- Discovery of metrics endpoints and scrape targets through CF labels/annotations
-- Discovery of rules (alerts, recorders) through CF labels/annotations
+Variant uses the Cloud foundry API to:
+- Discover metrics endpoints and scrape targets through CF labels / annotations
+- Discover rules (alerts, recorders) through CF labels / annotations
 - Creates `rule_files_*.yml` containing discovered rules
 - Renders `scrape_configs:` and `rule_files:` sections
-- Adds/removes CF network policies between Promethues and scrape targets containers
-- Writes the `prometheus.yml` config file and triggers Promethues to reload
+- Adds / removes required CF network policies which enable Promethues to scrape target containers
+- Writes the `prometheus.yml` config file and triggers Prometheus to reload
 
-![variant](resources/variant.png)
+  ![variant](resources/variant.png)
 
-## Label and Annotation setup using Terraform
+## Setting Labels and Annotations
+
+The [Cloud foundry provider](https://registry.terraform.io/providers/philips-labs/cloudfoundry/latest/docs/resources/app#labels) supports managing
+`annotations` and `labels` and we recommend taking this approach. Alternatively, you can use the CF CLI.
+
+### Terraform example
 
 ```hcl
 resource "cloudfoundry_app" "kong" {
@@ -42,7 +48,26 @@ resource "cloudfoundry_app" "kong" {
 }
 ```
 
+### CF CLI example
+
+```shell
+cf set-label app tempo variant.tva/exporter=true
+```
+
+```shell
+cf curl v3/apps/GUID \
+  -X PATCH \
+  -d '{
+    "metadata": {
+      "annotations": {
+        "prometheus.exporter.port": "port"
+      }
+    }
+  }'
+```
+
 ## Labels
+
 Labels control which CF apps `variant` will examine for exporters or rules
 
 | Label | Description |
@@ -51,6 +76,7 @@ Labels control which CF apps `variant` will examine for exporters or rules
 | `variant.tva/rules=true` | Variant will look for Prometheus rules in the annotations |
 
 ## Annotations
+
 Annotations contain the configurations for metrics and rule definitions
 
 ### For exporters
@@ -71,4 +97,5 @@ Annotations contain the configurations for metrics and rule definitions
 | `prometheus.rules.*.json` | JSON string of a `Rule` object |  |
 
 ## License
+
 License is MIT
