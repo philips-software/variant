@@ -1,6 +1,6 @@
 # Variant
 A sidecar for [Thanos](https://github.com/philips-labs/terraform-cloudfoundry-thanos) to discover scrape endpoints and rules.
-It also takes care of maintaing the network policies so Thanos/Promethues can do its scraping.
+It also takes care of maintaing the network policies so Thanos/Prometheus can do their scraping. 
 
 ## Internals
 Uses the Cloud foundry API to:
