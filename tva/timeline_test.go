@@ -645,3 +645,38 @@ func TestNewTimeline(t *testing.T) {
 		return
 	}
 }
+
+func TestReconcile(t *testing.T) {
+	teardown := setup(t)
+	defer teardown()
+
+	config := tva.Config{
+		Config: clients.Config{
+			Endpoint: serverCF.URL,
+			User:     "ron",
+			Password: "swanson",
+		},
+		PrometheusConfig: prometheusConfig,
+		InternalDomainID: internalDomainID,
+		ThanosID:         thanosID,
+		ThanosURL:        serverThanos.URL,
+	}
+
+	timeline, err := tva.NewTimeline(config,
+		tva.WithDebug(true),
+		tva.WithFrequency(5),
+		tva.WithTenants("default"),
+		tva.WithReload(true),
+	)
+	if !assert.Nil(t, err) {
+		return
+	}
+	if !assert.NotNil(t, timeline) {
+		return
+	}
+
+	err = timeline.Reconcile()
+	if !assert.Nil(t, err) {
+		return
+	}
+}
