@@ -84,8 +84,8 @@ Annotations contain the configurations for metrics and rule definitions
 | Annotation | Description | Default       |
 |------------|-------------|---------------|
 | `prometheus.exporter.port` | The metrics ports to use | `9090` |
-| `promethues.exporter.path` | The metrics path to use | `/metrics` |
-| `promethues.exporter.instance_name` | The instance name to use (optional) | |
+| `prometheus.exporter.path` | The metrics path to use | `/metrics` |
+| `prometheus.exporter.instance_name` | The instance name to use (optional) | |
 | `promethues.targets.port` | The targets port to use (optional) | |
 | `prometheus.targets.path` | The targets path to use (optional) | `/targets` |
 
@@ -95,6 +95,9 @@ Annotations contain the configurations for metrics and rule definitions
 |------------|-------------|---------------|
 | `prometheus.rules.json` | JSON string of `[]Rule` | `jsonecode('[]')`
 | `prometheus.rules.*.json` | JSON string of a `Rule` object |  |
+
+If both formats are used the rules are merged in the final rule file rendering. This
+is useful to circumvent the `5000` character limit for annotation values in CF.
 
 ## License
 
