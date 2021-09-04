@@ -96,7 +96,7 @@ Annotations contain the configurations for metrics and rule definitions
 | `prometheus.rules.json` | JSON string of `[]Rule` | `jsonecode('[]')`
 | `prometheus.rules.*.json` | JSON string of a `Rule` object |  |
 
-If both formats are used the rules are merged in the final rule file rendering. This
+When both formats are used the rules are merged in the final rule file rendering. This
 is useful to circumvent the `5000` character limit for annotation values in CF.
 
 ## License
