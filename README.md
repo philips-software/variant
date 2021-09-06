@@ -12,7 +12,7 @@ Variant uses the Cloud foundry API to:
 - Adds / removes required CF network policies which enable Promethues to scrape target containers
 - Writes the `prometheus.yml` config file and triggers Prometheus to reload
 
-  ![variant](resources/variant.png)
+  ![variant](resources/variant.svg)
 
 ## Setting Labels and Annotations
 
