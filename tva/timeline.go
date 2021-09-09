@@ -60,6 +60,7 @@ type Timeline struct {
 	debug         bool
 	metrics       Metrics
 	frequency     time.Duration
+	expiresAt     time.Time
 }
 
 type App struct {
@@ -67,6 +68,8 @@ type App struct {
 	OrgName   string
 	SpaceName string
 }
+
+const twoHours = time.Second * 7200
 
 type ruleFiles map[string][]rules.RuleNode
 
@@ -77,6 +80,7 @@ func NewTimeline(config Config, opts ...OptionFunc) (*Timeline, error) {
 	}
 	timeline := &Timeline{
 		Session:   session,
+		expiresAt: time.Now().Add(twoHours),
 		Selectors: []string{fmt.Sprintf("%s=true", ExporterLabel)},
 		config:    config,
 	}
@@ -104,6 +108,19 @@ func NewTimeline(config Config, opts ...OptionFunc) (*Timeline, error) {
 		}
 	}
 	return timeline, nil
+}
+
+func (t *Timeline) session() (*clients.Session, error) {
+	if time.Now().After(t.expiresAt) {
+		var err error
+		t.Session, err = clients.NewSession(t.config.Config)
+		if err != nil {
+			t.expiresAt = time.Now()
+			return nil, err
+		}
+		t.expiresAt = time.Now().Add(twoHours)
+	}
+	return t.Session, nil
 }
 
 func (t *Timeline) Start() (done chan bool) {
@@ -179,18 +196,22 @@ func (t *Timeline) Reconcile() error {
 			t.metrics.IncTotalIncursions()
 		}
 	}()
+	session, err := t.session()
+	if err != nil {
+		return fmt.Errorf("session: %w", err)
+	}
 
 	// Retrieve all relevant apps
-	apps, _, err := t.V3().GetApplications(ccv3.Query{
+	apps, _, err := session.V3().GetApplications(ccv3.Query{
 		Key:    "label_selector",
 		Values: t.Selectors,
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("GetApplications: %w", err)
 	}
 	// Retrieve default apps if applicable
 	if len(t.Selectors) > 1 && t.defaultTenant {
-		defaultApps, _, err := t.V3().GetApplications(ccv3.Query{
+		defaultApps, _, err := session.V3().GetApplications(ccv3.Query{
 			Key: "label_selector",
 			Values: []string{
 				t.Selectors[0],
@@ -201,7 +222,7 @@ func (t *Timeline) Reconcile() error {
 		}
 	}
 	// Retrieve apps with rules
-	appsWithRules, _, err := t.V3().GetApplications(ccv3.Query{
+	appsWithRules, _, err := session.V3().GetApplications(ccv3.Query{
 		Key: "label_selector",
 		Values: []string{
 			fmt.Sprintf("%s=true", RulesLabel),
@@ -217,7 +238,7 @@ func (t *Timeline) Reconcile() error {
 	// Rules
 	ruleFilesToSave := make(ruleFiles)
 	for _, app := range appsWithRules {
-		metadata, err := MetadataRetrieve(t.Session.Raw(), app.GUID)
+		metadata, err := MetadataRetrieve(session.Raw(), app.GUID)
 		if err != nil {
 			// TODO: record error here
 			continue
@@ -282,7 +303,7 @@ func (t *Timeline) Reconcile() error {
 	fmt.Printf("removing: %d\n", len(toPrune))
 	if len(toPrune) > 0 {
 		for _, p := range toPrune {
-			err := t.Networking().RemovePolicies([]cfnetv1.Policy{p})
+			err := session.Networking().RemovePolicies([]cfnetv1.Policy{p})
 			if err != nil {
 				fmt.Printf("error removing policy [%v]: %v\n", p, err)
 				if t.metrics != nil {
@@ -294,7 +315,7 @@ func (t *Timeline) Reconcile() error {
 	}
 	if len(toAdd) > 0 {
 		for _, p := range toAdd {
-			err := t.Networking().CreatePolicies([]cfnetv1.Policy{p})
+			err := session.Networking().CreatePolicies([]cfnetv1.Policy{p})
 			if err != nil {
 				fmt.Printf("error creating policy [%v]: %v\n", p, err)
 				if t.metrics != nil {
