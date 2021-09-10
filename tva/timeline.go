@@ -453,6 +453,7 @@ func (t *Timeline) generatePoliciesAndScrapeConfigs(app App) ([]cfnetv1.Policy, 
 			Regex:        targetRegex,
 		})
 	}
+	// Multiple host scraping
 	if port := metadata.Annotations[AnnotationTargetsPort]; port != nil {
 		targetsPort, err := strconv.Atoi(*port)
 		if err != nil {
@@ -472,6 +473,10 @@ func (t *Timeline) generatePoliciesAndScrapeConfigs(app App) ([]cfnetv1.Policy, 
 			&promconfig.RelabelConfig{
 				SourceLabels: []string{"__param_target"},
 				TargetLabel:  "instance",
+			},
+			&promconfig.RelabelConfig{
+				TargetLabel: "__address__",
+				Replacement: fmt.Sprintf("http://%s:%d%s", internalHost, portNumber, scrapePath),
 			})
 		scrapeConfig.ServiceDiscoveryConfig = promconfig.ServiceDiscoveryConfig{
 			HTTPSDConfigs: []*promconfig.HTTPSDConfig{
