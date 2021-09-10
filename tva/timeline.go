@@ -6,8 +6,6 @@ import (
 	"net/http"
 	"path"
 	"regexp"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -261,7 +259,7 @@ func (t *Timeline) Reconcile() error {
 		// Erase app from startTime if it shows up on the timeline
 		t.startState = PrunePoliciesByDestination(t.startState, app.GUID)
 		// Calculate policies and scrape_config sections for app
-		policies, endpoints, _ := t.generatePoliciesAndScrapeConfigs(App{Application: app})
+		policies, endpoints, _ := GeneratePoliciesAndScrapeConfigs(session, t.config.InternalDomainID, t.config.ThanosID, App{Application: app})
 		generatedPolicies = append(generatedPolicies, policies...)
 		configs = append(configs, endpoints...)
 	}
@@ -366,128 +364,6 @@ func (t *Timeline) Targets() []promconfig.ScrapeConfig {
 	return targets
 }
 
-func (t *Timeline) generatePoliciesAndScrapeConfigs(app App) ([]cfnetv1.Policy, []promconfig.ScrapeConfig, error) {
-	var policies []cfnetv1.Policy
-	var configs []promconfig.ScrapeConfig
-
-	instanceCount := 0
-	processes, _, err := t.V3().GetApplicationProcesses(app.GUID)
-	if err != nil {
-		return policies, configs, err
-	}
-	for _, p := range processes {
-		if p.Instances.IsSet && p.Instances.Value > instanceCount {
-			instanceCount = p.Instances.Value
-		}
-	}
-	if instanceCount == 0 {
-		return policies, configs, fmt.Errorf("no instances found")
-	}
-	rawClient := t.Raw()
-	metadata, err := MetadataRetrieve(rawClient, app.GUID)
-	if err != nil {
-		return policies, configs, fmt.Errorf("metadataRetrieve: %w", err)
-	}
-	portNumber := 9090 // Default
-	if port := metadata.Annotations[AnnotationExporterPort]; port != nil {
-		portNumber, err = strconv.Atoi(*port)
-		if err != nil {
-			return policies, configs, err
-		}
-	}
-	scrapePath := "/metrics" // Default
-	if exporterPath := metadata.Annotations[AnnotationExporterPath]; exporterPath != nil {
-		scrapePath = *exporterPath
-	}
-	jobName := app.Name // Default
-	if name := metadata.Annotations[AnnotationExporterJobName]; name != nil {
-		jobName = *name
-	}
-	appGUID := strings.Split(app.GUID, "-")[0]
-	jobName = fmt.Sprintf("%s-%s", jobName, appGUID) // Ensure uniqueness across spaces
-
-	scheme := "http" // Default
-	if schema := metadata.Annotations[AnnotationExporterScheme]; schema != nil {
-		scheme = *schema
-	}
-	policies = append(policies, t.newPolicy(app.GUID, portNumber))
-	internalHost, err := t.internalHost(app)
-	if err != nil {
-		return policies, configs, err
-	}
-	var targets []string
-	for count := 0; count < instanceCount; count++ {
-		target := fmt.Sprintf("%d.%s:%d", count, internalHost, portNumber)
-		targets = append(targets, target)
-	}
-	scrapeConfig := promconfig.ScrapeConfig{
-		JobName:         jobName,
-		HonorTimestamps: true,
-		Scheme:          scheme,
-		MetricsPath:     scrapePath,
-		ServiceDiscoveryConfig: promconfig.ServiceDiscoveryConfig{
-			StaticConfigs: []*promconfig.Group{
-				{
-					Targets: targets,
-					Labels: map[string]string{
-						"cf_app_name": app.Name,
-					},
-				},
-			},
-		},
-	}
-	instanceName := ""
-	if name := metadata.Annotations[AnnotationInstanceName]; name != nil {
-		instanceName = *name
-	}
-	if instanceName != "" {
-		targetRegex := "([^.]*).(.*)" // This match our own target format: ${1} = instanceIndex, ${2} = host:port
-		if regex := metadata.Annotations[AnnotationInstanceSourceRegex]; regex != nil {
-			targetRegex = *regex
-		}
-		scrapeConfig.MetricRelabelConfigs = append(scrapeConfig.MetricRelabelConfigs, &promconfig.RelabelConfig{
-			TargetLabel:  "instance",
-			SourceLabels: []string{"instance"},
-			Replacement:  instanceName,
-			Action:       "replace",
-			Regex:        targetRegex,
-		})
-	}
-	// Multiple host scraping
-	if port := metadata.Annotations[AnnotationTargetsPort]; port != nil {
-		targetsPort, err := strconv.Atoi(*port)
-		if err != nil {
-			return policies, configs, err
-		}
-		targetsPath := "/targets"
-		if p := metadata.Annotations[AnnotationTargetsPath]; p != nil {
-			targetsPath = *p
-		}
-		targetsURL := fmt.Sprintf("%s://%s:%d%s", scheme, internalHost, targetsPort, targetsPath)
-		policies = append(policies, t.newPolicy(app.GUID, targetsPort))
-		scrapeConfig.RelabelConfigs = append(scrapeConfig.RelabelConfigs,
-			&promconfig.RelabelConfig{
-				SourceLabels: []string{"__address__"},
-				TargetLabel:  "__param_target",
-			},
-			&promconfig.RelabelConfig{
-				SourceLabels: []string{"__param_target"},
-				TargetLabel:  "instance",
-			},
-			&promconfig.RelabelConfig{
-				TargetLabel: "__address__",
-				Replacement: fmt.Sprintf("%s://%s:%d%s", scheme, internalHost, portNumber, scrapePath),
-			})
-		scrapeConfig.ServiceDiscoveryConfig = promconfig.ServiceDiscoveryConfig{
-			HTTPSDConfigs: []*promconfig.HTTPSDConfig{
-				{URL: targetsURL},
-			},
-		}
-	}
-	configs = append(configs, scrapeConfig)
-	return policies, configs, nil
-}
-
 func (t *Timeline) getCurrentPolicies() []cfnetv1.Policy {
 	allPolicies, _ := t.Networking().ListPolicies(t.config.ThanosID)
 	var policies []cfnetv1.Policy
@@ -499,9 +375,9 @@ func (t *Timeline) getCurrentPolicies() []cfnetv1.Policy {
 	return policies
 }
 
-func (t *Timeline) newPolicy(destination string, port int) cfnetv1.Policy {
+func NewPolicy(source, destination string, port int) cfnetv1.Policy {
 	return cfnetv1.Policy{
-		Source: cfnetv1.PolicySource{ID: t.config.ThanosID},
+		Source: cfnetv1.PolicySource{ID: source},
 		Destination: cfnetv1.PolicyDestination{
 			ID:       destination,
 			Protocol: cfnetv1.PolicyProtocolTCP,
@@ -514,14 +390,14 @@ func pathMetadata(m metadataType, guid string) string {
 	return fmt.Sprintf("/v3/%s/%s", m, guid)
 }
 
-func (t *Timeline) internalHost(app App) (string, error) {
-	client := t.Session.V2()
+func InternalHost(session *clients.Session, internalDomainID string, app App) (string, error) {
+	client := session.V2()
 	routes, _, err := client.GetApplicationRoutes(app.GUID)
 	if err != nil {
 		return "", err
 	}
 	for _, r := range routes {
-		if r.DomainGUID == t.config.InternalDomainID {
+		if r.DomainGUID == internalDomainID {
 			return fmt.Sprintf("%s.%s", r.Host, "apps.internal"), nil
 		}
 	}
