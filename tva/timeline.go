@@ -463,7 +463,7 @@ func (t *Timeline) generatePoliciesAndScrapeConfigs(app App) ([]cfnetv1.Policy, 
 		if p := metadata.Annotations[AnnotationTargetsPath]; p != nil {
 			targetsPath = *p
 		}
-		targetsURL := fmt.Sprintf("http://%s:%d%s", internalHost, targetsPort, targetsPath)
+		targetsURL := fmt.Sprintf("%s://%s:%d%s", scheme, internalHost, targetsPort, targetsPath)
 		policies = append(policies, t.newPolicy(app.GUID, targetsPort))
 		scrapeConfig.RelabelConfigs = append(scrapeConfig.RelabelConfigs,
 			&promconfig.RelabelConfig{
@@ -476,7 +476,7 @@ func (t *Timeline) generatePoliciesAndScrapeConfigs(app App) ([]cfnetv1.Policy, 
 			},
 			&promconfig.RelabelConfig{
 				TargetLabel: "__address__",
-				Replacement: fmt.Sprintf("http://%s:%d%s", internalHost, portNumber, scrapePath),
+				Replacement: fmt.Sprintf("%s://%s:%d%s", scheme, internalHost, portNumber, scrapePath),
 			})
 		scrapeConfig.ServiceDiscoveryConfig = promconfig.ServiceDiscoveryConfig{
 			HTTPSDConfigs: []*promconfig.HTTPSDConfig{
