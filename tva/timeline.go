@@ -52,6 +52,7 @@ type Timeline struct {
 	Selectors     []string
 	defaultTenant bool
 	startState    []cfnetv1.Policy
+	knownVariants map[string]bool
 	startConfig   string
 	config        Config
 	reload        bool
@@ -77,10 +78,11 @@ func NewTimeline(config Config, opts ...OptionFunc) (*Timeline, error) {
 		return nil, fmt.Errorf("NewTimeline: %w", err)
 	}
 	timeline := &Timeline{
-		Session:   session,
-		expiresAt: time.Now().Add(twoHours),
-		Selectors: []string{fmt.Sprintf("%s=true", ExporterLabel)},
-		config:    config,
+		Session:       session,
+		expiresAt:     time.Now().Add(twoHours),
+		Selectors:     []string{fmt.Sprintf("%s=true", ExporterLabel)},
+		config:        config,
+		knownVariants: make(map[string]bool),
 	}
 	data, err := ioutil.ReadFile(config.PrometheusConfig)
 	if err != nil {
@@ -94,6 +96,9 @@ func NewTimeline(config Config, opts ...OptionFunc) (*Timeline, error) {
 	}
 	timeline.startConfig = string(data)
 	timeline.startState = timeline.getCurrentPolicies()
+	for _, p := range timeline.startState {
+		timeline.knownVariants[p.Destination.ID] = false
+	}
 	for _, o := range opts {
 		if err := o(timeline); err != nil {
 			return nil, err
@@ -280,6 +285,7 @@ func (t *Timeline) Reconcile() error {
 			}
 		}
 		if !found {
+			t.knownVariants[p.Destination.ID] = true
 			toAdd = append(toAdd, p)
 		}
 	}
@@ -291,7 +297,7 @@ func (t *Timeline) Reconcile() error {
 				found = true
 			}
 		}
-		if !found {
+		if !found && t.knownVariants[p.Destination.ID] { // Only prune known variants
 			toPrune = append(toPrune, p)
 		}
 	}
