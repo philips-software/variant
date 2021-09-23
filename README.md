@@ -60,7 +60,7 @@ cf curl v3/apps/GUID \
   -d '{
     "metadata": {
       "annotations": {
-        "prometheus.exporter.port": "port"
+        "prometheus.exporter.port": "9100"
       }
     }
   }'
