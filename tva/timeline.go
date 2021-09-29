@@ -138,7 +138,7 @@ func (t *Timeline) Start() (done chan bool) {
 				return
 			case <-ticker.C:
 				fmt.Printf("reconciling timeline\n")
-				err := t.Reconcile()
+				_, err := t.Reconcile()
 				if err != nil {
 					fmt.Printf("error reconciling: %v\n", err)
 				}
@@ -182,7 +182,7 @@ func (t *Timeline) saveAndReload(newConfig string, files ruleFiles) error {
 }
 
 // Reconcile calculates and applies network-polices and scrap configs
-func (t *Timeline) Reconcile() error {
+func (t *Timeline) Reconcile() (string, error) {
 	var foundScrapeConfigs = 0
 	var managedNetworkPolicies = 0
 
@@ -201,7 +201,7 @@ func (t *Timeline) Reconcile() error {
 	}()
 	session, err := t.session()
 	if err != nil {
-		return fmt.Errorf("session: %w", err)
+		return "", fmt.Errorf("session: %w", err)
 	}
 
 	// Retrieve all relevant apps
@@ -210,7 +210,7 @@ func (t *Timeline) Reconcile() error {
 		Values: t.Selectors,
 	})
 	if err != nil {
-		return fmt.Errorf("GetApplications: %w", err)
+		return "", fmt.Errorf("GetApplications: %w", err)
 	}
 	// Retrieve default apps if applicable
 	if len(t.Selectors) > 1 && t.defaultTenant {
@@ -339,7 +339,7 @@ func (t *Timeline) Reconcile() error {
 		if t.metrics != nil {
 			t.metrics.IncErrorIncursions()
 		}
-		return fmt.Errorf("loading config: %w", err)
+		return "", fmt.Errorf("loading config: %w", err)
 	}
 	for _, cfg := range configs {
 		n := cfg
@@ -354,13 +354,13 @@ func (t *Timeline) Reconcile() error {
 		if t.metrics != nil {
 			t.metrics.IncErrorIncursions()
 		}
-		return fmt.Errorf("yaml.Marshal: %w", err)
+		return "", fmt.Errorf("yaml.Marshal: %w", err)
 	}
 	if t.debug {
 		fmt.Printf("---config start---\n%s\n---config end---\n", string(output))
 	}
 
-	return t.saveAndReload(string(output), ruleFilesToSave)
+	return string(output), t.saveAndReload(string(output), ruleFilesToSave)
 }
 
 func (t *Timeline) Targets() []promconfig.ScrapeConfig {

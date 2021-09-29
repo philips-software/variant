@@ -10,7 +10,9 @@ import (
 	"variant/tva"
 
 	clients "github.com/cloudfoundry-community/go-cf-clients-helper"
+	"github.com/percona/promconfig"
 	"github.com/stretchr/testify/assert"
+	"gopkg.in/yaml.v3"
 )
 
 var (
@@ -55,9 +57,10 @@ global:
 # Alertmanager configuration
 alerting:
   alertmanagers:
-    - static_configs:
-        - targets:
-          # - alertmanager:9093
+  - scheme: http
+    static_configs:
+    - targets:
+      - 0.tf-alertmanager-e137cd34.apps.internal:9093
 
 # Load rules once and periodically evaluate them according to the global 'evaluation_interval'.
 rule_files:
@@ -640,10 +643,11 @@ func TestNewTimeline(t *testing.T) {
 	}
 	done <- true
 
-	err = timeline.Reconcile()
+	output, err := timeline.Reconcile()
 	if !assert.Nil(t, err) {
 		return
 	}
+	assert.True(t, len(output) > 0)
 }
 
 func TestReconcile(t *testing.T) {
@@ -675,8 +679,26 @@ func TestReconcile(t *testing.T) {
 		return
 	}
 
-	err = timeline.Reconcile()
+	output, err := timeline.Reconcile()
 	if !assert.Nil(t, err) {
 		return
 	}
+	assert.True(t, len(output) > 0)
+	// Generate new config
+	var cfg promconfig.Config
+
+	err = yaml.Unmarshal([]byte(output), &cfg)
+	if !assert.Nil(t, err) {
+		return
+	}
+	if !assert.Equal(t, 1, len(cfg.AlertingConfig.AlertmanagerConfigs)) {
+		return
+	}
+	if !assert.Equal(t, 1, len(cfg.AlertingConfig.AlertmanagerConfigs[0].ServiceDiscoveryConfig.StaticConfigs)) {
+		return
+	}
+	if !assert.Equal(t, 1, len(cfg.AlertingConfig.AlertmanagerConfigs[0].ServiceDiscoveryConfig.StaticConfigs[0].Targets)) {
+		return
+	}
+	assert.Equal(t, "0.tf-alertmanager-e137cd34.apps.internal:9093", cfg.AlertingConfig.AlertmanagerConfigs[0].ServiceDiscoveryConfig.StaticConfigs[0].Targets[0])
 }
