@@ -36,6 +36,6 @@ jobs:
           file: ./Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: philipslabs/variant,docker.na1.hsdp.io/philipslabs/variant
-          cache-from: type=registry,ref=philipslabs/variant:latest
+          tags: philipssoftware/variant,docker.na1.hsdp.io/philipssoftware/variant
+          cache-from: type=registry,ref=philipssoftware/variant:latest
           cache-to: type=inline

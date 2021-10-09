@@ -47,7 +47,7 @@ jobs:
           file: ./Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: philipslabs/variant:${{ steps.vars.outputs.tag }},docker.na1.hsdp.io/philipslabs/variant:${{ steps.vars.outputs.tag }}
+          tags: philipssoftware/variant:${{ steps.vars.outputs.tag }},docker.na1.hsdp.io/philipssoftware/variant:${{ steps.vars.outputs.tag }}
       -
         name: Image digest
         run: echo ${{ steps.docker_build.outputs.digest }}
