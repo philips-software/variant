@@ -47,7 +47,8 @@ jobs:
           file: ./Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: philipssoftware/variant:${{ steps.vars.outputs.tag }},docker.na1.hsdp.io/philipssoftware/variant:${{ steps.vars.outputs.tag }}
+          tags: loafoe/variant:${{ steps.vars.outputs.tag }},docker.na1.hsdp.io/philipssoftware/variant:${{ steps.vars.outputs.tag }}
+          cache-from: type=registry,ref=loafoe/variant:buildcache
       -
         name: Image digest
         run: echo ${{ steps.docker_build.outputs.digest }}

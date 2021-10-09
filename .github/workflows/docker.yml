@@ -36,6 +36,6 @@ jobs:
           file: ./Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: philipssoftware/variant,docker.na1.hsdp.io/philipssoftware/variant
-          cache-from: type=registry,ref=philipssoftware/variant:latest
-          cache-to: type=inline
+          tags: loafoe/variant,docker.na1.hsdp.io/philipssoftware/variant
+          cache-from: type=registry,ref=loafoe/variant:buildcache
+          cache-to: type=registry,ref=loafoe/variant:buildcache,mode=max
