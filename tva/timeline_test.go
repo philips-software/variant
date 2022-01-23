@@ -371,6 +371,8 @@ scrape_configs:
 	}
 
 	muxCF.HandleFunc("/v3/apps/9e22fe38-38ce-4af6-b529-44d2853d072f", appHandler)
+	muxCF.HandleFunc("/v3/spaces", spacesHandler)
+	muxCF.HandleFunc("/v3/organizations/945ee4ac-bdf1-4980-9eb7-6c2c3bb0a774", orgHandler)
 	muxCF.HandleFunc("/v3/apps", appsHandler)
 
 	muxCF.HandleFunc("/v3", func(w http.ResponseWriter, r *http.Request) {
@@ -608,6 +610,117 @@ scrape_configs:
 	}
 }
 
+func orgHandler(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, `{
+  "guid": "945ee4ac-bdf1-4980-9eb7-6c2c3bb0a774",
+  "created_at": "2021-03-29T07:41:52Z",
+  "updated_at": "2021-03-29T07:41:52Z",
+  "name": "test-org",
+  "suspended": false,
+  "relationships": {
+    "quota": {
+      "data": {
+        "guid": "36348292-73dc-4610-a3dc-e19033aed895"
+      }
+    }
+  },
+  "metadata": {
+    "labels": {
+
+    },
+    "annotations": {
+
+    }
+  },
+  "links": {
+    "self": {
+      "href": "`+serverCF.URL+`/v3/organizations/945ee4ac-bdf1-4980-9eb7-6c2c3bb0a774"
+    },
+    "domains": {
+      "href": "`+serverCF.URL+`/v3/organizations/945ee4ac-bdf1-4980-9eb7-6c2c3bb0a774/domains"
+    },
+    "default_domain": {
+      "href": "`+serverCF.URL+`/v3/organizations/945ee4ac-bdf1-4980-9eb7-6c2c3bb0a774/domains/default"
+    },
+    "quota": {
+      "href": "`+serverCF.URL+`/v3/organization_quotas/36348292-73dc-4610-a3dc-e19033aed895"
+    }
+  }
+}`)
+		return
+	default:
+		w.WriteHeader(http.StatusInternalServerError)
+	}
+}
+
+func spacesHandler(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, `{
+  "pagination": {
+    "total_results": 1,
+    "total_pages": 1,
+    "first": {
+      "href": "`+serverCF.URL+`/v3/spaces?guids=b6b0855f-df85-41c8-8b6f-52b3a1eabb3d&page=1&per_page=50"
+    },
+    "last": {
+      "href": "`+serverCF.URL+`/v3/spaces?guids=b6b0855f-df85-41c8-8b6f-52b3a1eabb3d&page=1&per_page=50"
+    },
+    "next": null,
+    "previous": null
+  },
+  "resources": [
+    {
+      "guid": "b6b0855f-df85-41c8-8b6f-52b3a1eabb3d",
+      "created_at": "2021-06-04T09:31:52Z",
+      "updated_at": "2021-06-04T09:31:52Z",
+      "name": "test-space",
+      "relationships": {
+        "organization": {
+          "data": {
+            "guid": "945ee4ac-bdf1-4980-9eb7-6c2c3bb0a774"
+          }
+        },
+        "quota": {
+          "data": null
+        }
+      },
+      "metadata": {
+        "labels": {
+
+        },
+        "annotations": {
+
+        }
+      },
+      "links": {
+        "self": {
+          "href": "`+serverCF.URL+`/v3/spaces/b6b0855f-df85-41c8-8b6f-52b3a1eabb3d"
+        },
+        "organization": {
+          "href": "`+serverCF.URL+`/v3/organizations/945ee4ac-bdf1-4980-9eb7-6c2c3bb0a774"
+        },
+        "features": {
+          "href": "`+serverCF.URL+`/v3/spaces/b6b0855f-df85-41c8-8b6f-52b3a1eabb3d/features"
+        },
+        "apply_manifest": {
+          "href": "`+serverCF.URL+`/v3/spaces/b6b0855f-df85-41c8-8b6f-52b3a1eabb3d/actions/apply_manifest",
+          "method": "POST"
+        }
+      }
+    }
+  ]
+}`)
+		return
+	default:
+		w.WriteHeader(http.StatusInternalServerError)
+	}
+}
+
 func TestNewTimeline(t *testing.T) {
 	teardown := setup(t)
 	defer teardown()
@@ -701,4 +814,12 @@ func TestReconcile(t *testing.T) {
 		return
 	}
 	assert.Equal(t, "0.tf-alertmanager-e137cd34.apps.internal:9093", cfg.AlertingConfig.AlertmanagerConfigs[0].ServiceDiscoveryConfig.StaticConfigs[0].Targets[0])
+	if !assert.Len(t, cfg.ScrapeConfigs, 3) {
+		return
+	}
+	if !assert.Len(t, cfg.ScrapeConfigs[2].ServiceDiscoveryConfig.StaticConfigs, 1) {
+		return
+	}
+	assert.Equal(t, cfg.ScrapeConfigs[2].ServiceDiscoveryConfig.StaticConfigs[0].Labels["cf_org_name"], "test-org")
+	assert.Equal(t, cfg.ScrapeConfigs[2].ServiceDiscoveryConfig.StaticConfigs[0].Labels["cf_space_name"], "test-space")
 }
