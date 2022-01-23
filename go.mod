@@ -21,6 +21,7 @@ require (
 	github.com/kr/pretty v0.2.0 // indirect
 	github.com/mattn/go-colorable v0.1.8 // indirect
 	github.com/mattn/go-isatty v0.0.13 // indirect
+	github.com/patrickmn/go-cache v2.1.0+incompatible // indirect
 	github.com/percona/promconfig v0.2.1
 	github.com/prometheus/client_golang v1.11.0
 	github.com/spf13/viper v1.8.0

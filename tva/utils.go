@@ -208,7 +208,9 @@ func GeneratePoliciesAndScrapeConfigs(session *clients.Session, internalDomainID
 				{
 					Targets: targets,
 					Labels: map[string]string{
-						"cf_app_name": app.Name,
+						"cf_app_name":   app.Name,
+						"cf_space_name": app.SpaceName,
+						"cf_org_name":   app.OrgName,
 					},
 				},
 			},

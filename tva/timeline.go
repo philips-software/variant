@@ -13,6 +13,7 @@ import (
 	"code.cloudfoundry.org/cli/api/cloudcontroller/ccv3"
 	"code.cloudfoundry.org/cli/resources"
 	clients "github.com/cloudfoundry-community/go-cf-clients-helper"
+	"github.com/patrickmn/go-cache"
 	"github.com/percona/promconfig"
 	"github.com/percona/promconfig/rules"
 	"gopkg.in/yaml.v2"
@@ -48,6 +49,7 @@ type Config struct {
 type Timeline struct {
 	sync.Mutex
 	*clients.Session
+	*cache.Cache
 	targets       []promconfig.ScrapeConfig
 	Selectors     []string
 	defaultTenant bool
@@ -110,6 +112,7 @@ func NewTimeline(config Config, opts ...OptionFunc) (*Timeline, error) {
 			fmt.Printf("%s\n", s)
 		}
 	}
+	timeline.Cache = cache.New(720*time.Minute, 1440*time.Minute)
 	return timeline, nil
 }
 
@@ -264,7 +267,12 @@ func (t *Timeline) Reconcile() (string, error) {
 		// Erase app from startTime if it shows up on the timeline
 		t.startState = PrunePoliciesByDestination(t.startState, app.GUID)
 		// Calculate policies and scrape_config sections for app
-		policies, endpoints, _ := GeneratePoliciesAndScrapeConfigs(session, t.config.InternalDomainID, t.config.ThanosID, App{Application: app})
+		orgName, spaceName, _ := t.LookupOrgAndSpaceName(app.SpaceGUID)
+		policies, endpoints, _ := GeneratePoliciesAndScrapeConfigs(session, t.config.InternalDomainID, t.config.ThanosID, App{
+			Application: app,
+			SpaceName:   spaceName,
+			OrgName:     orgName,
+		})
 		generatedPolicies = append(generatedPolicies, policies...)
 		configs = append(configs, endpoints...)
 	}
@@ -379,6 +387,52 @@ func (t *Timeline) getCurrentPolicies() []cfnetv1.Policy {
 		}
 	}
 	return policies
+}
+
+func (t *Timeline) LookupOrgAndSpaceName(guid string) (string, string, error) {
+	spaceName := ""
+	orgName := ""
+	spaceGUID := ""
+	orgGUID := ""
+	session, err := t.session()
+	if err != nil {
+		return orgName, spaceName, fmt.Errorf("session: %w", err)
+	}
+	// Lookup space first
+	if space, ok := t.Cache.Get(guid); ok {
+		spaceResource := space.(resources.Space)
+		spaceGUID = spaceResource.GUID
+		spaceName = spaceResource.Name
+		orgGUID = spaceResource.Relationships["organization"].GUID
+	}
+	if spaceGUID == "" { // No hit
+		spaces, _, _, err := session.V3().GetSpaces(ccv3.Query{
+			Key:    "guids",
+			Values: []string{guid},
+		})
+		if err != nil {
+			return orgName, spaceName, fmt.Errorf("space lookup: %w", err)
+		}
+		if len(spaces) == 0 {
+			return orgName, spaceName, fmt.Errorf("space not found: %s", guid)
+		}
+		t.Cache.Set(guid, spaces[0], 720*time.Minute)
+		spaceName = spaces[0].Name
+		orgGUID = spaces[0].Relationships["organization"].GUID
+	}
+	if org, ok := t.Cache.Get(orgGUID); ok {
+		orgResource := org.(resources.Organization)
+		orgName = orgResource.Name
+		return orgName, spaceName, nil // Cache hit, so we are done!
+	}
+	// Lookup ORG
+	organization, _, err := session.V3().GetOrganization(orgGUID)
+	if err != nil {
+		return orgName, spaceName, fmt.Errorf("org lookup: %w", err)
+	}
+	t.Cache.Set(orgGUID, organization, 720*time.Minute)
+	orgName = organization.Name
+	return orgName, spaceName, nil
 }
 
 func NewPolicy(source, destination string, port int) cfnetv1.Policy {
