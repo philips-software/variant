@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## v0.0.30
+
+- Add spaces feature option
+- Build with Go 1.18
+
 ## v0.0.29
 
 - Add cf_org_name and cf_space_name to static configs (#24)
