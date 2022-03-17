@@ -121,8 +121,7 @@ will tell variant to only consider apps label with these tenant values
 
 ### CF spaces based filtering
 
-Finally, variant can take a list of CF space GUIDs and will then only consider apps in these spaces, irrespective 
-of the tenant configuration. This method is useful if you have an all-seeing CF functional account but still want to
+Finally, variant can take a list of CF space GUIDs through the `--spaces` parameter (comma separated). Variant will then only consider apps in these spaces, irrespective of the tenant configuration. This method is useful if you have an all-seeing CF functional account but still want to
 limit which apps are considered by variant.
 
 ## License
