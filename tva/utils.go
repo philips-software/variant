@@ -48,6 +48,15 @@ func UniqPolicies(policies []cfnetv1.Policy) []cfnetv1.Policy {
 	return result
 }
 
+func ContainsString(haystack []string, needle string) bool {
+	for _, a := range haystack {
+		if strings.EqualFold(a, needle) {
+			return true
+		}
+	}
+	return false
+}
+
 func PrunePoliciesByDestination(policies []cfnetv1.Policy, destID string) []cfnetv1.Policy {
 	var result []cfnetv1.Policy
 	for _, p := range policies {

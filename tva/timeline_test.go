@@ -823,3 +823,98 @@ func TestReconcile(t *testing.T) {
 	assert.Equal(t, cfg.ScrapeConfigs[2].ServiceDiscoveryConfig.StaticConfigs[0].Labels["cf_org_name"], "test-org")
 	assert.Equal(t, cfg.ScrapeConfigs[2].ServiceDiscoveryConfig.StaticConfigs[0].Labels["cf_space_name"], "test-space")
 }
+
+func TestWithSpaces(t *testing.T) {
+	teardown := setup(t)
+	defer teardown()
+
+	config := tva.Config{
+		Config: clients.Config{
+			Endpoint: serverCF.URL,
+			User:     "ron",
+			Password: "swanson",
+		},
+		PrometheusConfig: prometheusConfig,
+		InternalDomainID: internalDomainID,
+		ThanosID:         thanosID,
+		ThanosURL:        serverThanos.URL,
+	}
+
+	timeline, err := tva.NewTimeline(config,
+		tva.WithDebug(true),
+		tva.WithFrequency(5),
+		tva.WithTenants("default"),
+		tva.WithSpaces("b6b0855f-df85-41c8-8b6f-52b3a1eabb3d"),
+		tva.WithReload(true),
+	)
+	if !assert.Nil(t, err) {
+		return
+	}
+	if !assert.NotNil(t, timeline) {
+		return
+	}
+
+	output, err := timeline.Reconcile()
+	if !assert.Nil(t, err) {
+		return
+	}
+	assert.True(t, len(output) > 0)
+	// Generate new config
+	var cfg promconfig.Config
+
+	err = yaml.Unmarshal([]byte(output), &cfg)
+	if !assert.Nil(t, err) {
+		return
+	}
+	if !assert.Len(t, cfg.ScrapeConfigs, 3) {
+		return
+	}
+	if !assert.Len(t, cfg.ScrapeConfigs[2].ServiceDiscoveryConfig.StaticConfigs, 1) {
+		return
+	}
+	assert.Equal(t, cfg.ScrapeConfigs[2].ServiceDiscoveryConfig.StaticConfigs[0].Labels["cf_org_name"], "test-org")
+	assert.Equal(t, cfg.ScrapeConfigs[2].ServiceDiscoveryConfig.StaticConfigs[0].Labels["cf_space_name"], "test-space")
+}
+
+func TestWithBogusSpaces(t *testing.T) {
+	teardown := setup(t)
+	defer teardown()
+
+	config := tva.Config{
+		Config: clients.Config{
+			Endpoint: serverCF.URL,
+			User:     "ron",
+			Password: "swanson",
+		},
+		PrometheusConfig: prometheusConfig,
+		InternalDomainID: internalDomainID,
+		ThanosID:         thanosID,
+		ThanosURL:        serverThanos.URL,
+	}
+	timeline, err := tva.NewTimeline(config,
+		tva.WithSpaces("dummy-space"),
+		tva.WithReload(true),
+	)
+	if !assert.Nil(t, err) {
+		return
+	}
+	if !assert.NotNil(t, timeline) {
+		return
+	}
+
+	output, err := timeline.Reconcile()
+	if !assert.Nil(t, err) {
+		return
+	}
+	assert.True(t, len(output) > 0)
+	// Generate new config
+	var cfg promconfig.Config
+
+	err = yaml.Unmarshal([]byte(output), &cfg)
+	if !assert.Nil(t, err) {
+		return
+	}
+	if !assert.Len(t, cfg.ScrapeConfigs, 2) {
+		return
+	}
+}

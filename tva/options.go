@@ -38,6 +38,15 @@ func WithMetrics(metrics Metrics) OptionFunc {
 	}
 }
 
+func WithSpaces(spaces string) OptionFunc {
+	list := strings.Split(spaces, ",")
+
+	return func(t *Timeline) error {
+		t.spaces = list
+		return nil
+	}
+}
+
 func WithTenants(tenants string) OptionFunc {
 	var vetted []string
 	var isDefault bool

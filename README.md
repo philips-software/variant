@@ -74,6 +74,7 @@ Labels control which CF apps `variant` will examine for exporters or rules
 |-------|-------------|
 | `variant.tva/exporter=true` | Variant will examine this app for Metrics exporter endpoints |
 | `variant.tva/rules=true` | Variant will look for Prometheus rules in the annotations |
+ | `variant.tva/tenant=default` | Optionally associate the app to a tenant bucket |
 
 ## Annotations
 
@@ -91,13 +92,38 @@ Annotations contain the configurations for metrics and rule definitions
 
 ### For rules
 
-| Annotation | Description | Default       |
-|------------|-------------|---------------|
-| `prometheus.rules.json` | JSON string of `[]Rule` | `jsonecode('[]')`
-| `prometheus.rules.*.json` | JSON string of a `Rule` object |  |
+| Annotation                | Description                    | Default           |
+|---------------------------|--------------------------------|-------------------|
+| `prometheus.rules.json`   | JSON string of `[]Rule`        | `jsonecode('[]')` |
+| `prometheus.rules.*.json` | JSON string of a `Rule` object |                   |
 
 When both formats are used the rules are merged in the final rule file rendering. This
 is useful to circumvent the `5000` character limit for annotation values in CF.
+
+## Limiting scraping scope
+
+In some deployments you may want to limit which apps variant will consider. There are several
+ways of achieving this:
+
+- By limiting the CF functional accounts visibility i.e. only add to specific spaces
+- By configuring a tenant list and setting `variant.tva/tenant` label accordingly
+- By specifying a list of space GUIDs to filter on
+
+### CF functional account visibility
+
+Variant uses the CF API to look for candidate apps to scrap. By simply limiting which spaces your
+CF functional account can access you can control which apps are found
+
+### Tenant based filtering
+
+You can label apps with `variant.tva/tenant` label and pass the values to variant through the `--tenants` parameter (comma separated). This
+will tell variant to only consider apps label with these tenant values
+
+### CF spaces based filtering
+
+Finally, variant can take a list of CF space GUIDs and will then only consider apps in these spaces, irrespective 
+of the tenant configuration. This method is useful if you have an all-seeing CF functional account but still want to
+limit which apps are considered by variant.
 
 ## License
 

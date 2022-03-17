@@ -52,6 +52,7 @@ type Timeline struct {
 	*cache.Cache
 	targets       []promconfig.ScrapeConfig
 	Selectors     []string
+	spaces        []string
 	defaultTenant bool
 	startState    []cfnetv1.Policy
 	knownVariants map[string]bool
@@ -240,6 +241,24 @@ func (t *Timeline) Reconcile() (string, error) {
 
 	apps = UniqApps(apps)
 	appsWithRules = UniqApps(appsWithRules)
+
+	// Filter based on spaces list
+	if len(t.spaces) > 0 {
+		var filteredApps []resources.Application
+		var filteredAppsWithRules []resources.Application
+		for _, app := range apps {
+			if ContainsString(t.spaces, app.SpaceGUID) {
+				filteredApps = append(filteredApps, app)
+			}
+		}
+		apps = filteredApps
+		for _, app := range appsWithRules {
+			if ContainsString(t.spaces, app.SpaceGUID) {
+				filteredAppsWithRules = append(filteredAppsWithRules, app)
+			}
+		}
+		appsWithRules = filteredAppsWithRules
+	}
 
 	// Rules
 	ruleFilesToSave := make(ruleFiles)

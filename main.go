@@ -57,6 +57,7 @@ func main() {
 	viper.SetDefault("debug", false)
 	viper.SetDefault("refresh", 15)
 	viper.SetDefault("tenants", "default")
+	viper.SetDefault("spaces", "")
 	viper.SetDefault("reload", true)
 	viper.AutomaticEnv()
 
@@ -120,6 +121,7 @@ func main() {
 		tva.WithDebug(viper.GetBool("debug")),
 		tva.WithFrequency(refresh),
 		tva.WithTenants(viper.GetString("tenants")),
+		tva.WithSpaces(viper.GetString("spaces")),
 		tva.WithReload(viper.GetBool("reload")),
 		tva.WithMetrics(metrics),
 	)
