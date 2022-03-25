@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## v0.0.31
+
+- Bugfix: space filtering was broken
+
 ## v0.0.30
 
 - Add spaces feature option
