@@ -213,6 +213,9 @@ func (t *Timeline) Reconcile() (string, error) {
 		Key:    "label_selector",
 		Values: t.Selectors,
 	})
+	if t.debug {
+		fmt.Printf("found %d apps based on label selectors (%v)\n", len(apps), t.Selectors)
+	}
 	if err != nil {
 		return "", fmt.Errorf("GetApplications: %w", err)
 	}
@@ -226,6 +229,9 @@ func (t *Timeline) Reconcile() (string, error) {
 		})
 		if err == nil {
 			apps = append(apps, defaultApps...)
+		}
+		if t.debug {
+			fmt.Printf("found %d apps after tenant filtering\n", len(apps))
 		}
 	}
 	// Retrieve apps with rules
@@ -244,6 +250,9 @@ func (t *Timeline) Reconcile() (string, error) {
 
 	// Filter based on spaces list
 	if len(t.spaces) > 0 {
+		if t.debug {
+			fmt.Printf("filtering %d spaces\n", len(t.spaces))
+		}
 		var filteredApps []resources.Application
 		var filteredAppsWithRules []resources.Application
 		for _, app := range apps {
@@ -252,6 +261,9 @@ func (t *Timeline) Reconcile() (string, error) {
 			}
 		}
 		apps = filteredApps
+		if t.debug {
+			fmt.Printf("found %d apps after space filtering\n", len(apps))
+		}
 		for _, app := range appsWithRules {
 			if ContainsString(t.spaces, app.SpaceGUID) {
 				filteredAppsWithRules = append(filteredAppsWithRules, app)
@@ -277,7 +289,7 @@ func (t *Timeline) Reconcile() (string, error) {
 	}
 
 	if t.debug {
-		fmt.Printf("found %d matching selectors\n", len(apps))
+		fmt.Printf("processing %d apps during this incursion\n", len(apps))
 	}
 	// Determine the desired state
 	var configs []promconfig.ScrapeConfig

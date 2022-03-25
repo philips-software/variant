@@ -40,6 +40,9 @@ func WithMetrics(metrics Metrics) OptionFunc {
 
 func WithSpaces(spaces string) OptionFunc {
 	list := strings.Split(spaces, ",")
+	if len(list) == 1 && list[0] == "" {
+		list = []string{}
+	}
 
 	return func(t *Timeline) error {
 		t.spaces = list
