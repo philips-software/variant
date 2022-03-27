@@ -180,8 +180,13 @@ func (t *Timeline) saveAndReload(newConfig string, files ruleFiles) error {
 	if err != nil {
 		return fmt.Errorf("reload config: %w", err)
 	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+	if resp != nil && resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("reload config: StatusCode = %d", resp.StatusCode)
+	}
 	_, err = ioutil.ReadAll(resp.Body)
-	_ = resp.Body.Close()
 	return err
 }
 
@@ -398,8 +403,14 @@ func (t *Timeline) Reconcile() (string, error) {
 	if t.debug {
 		fmt.Printf("---config start---\n%s\n---config end---\n", string(output))
 	}
-
-	return string(output), t.saveAndReload(string(output), ruleFilesToSave)
+	err = t.saveAndReload(string(output), ruleFilesToSave)
+	if err != nil {
+		if t.metrics != nil {
+			t.metrics.IncErrorIncursions()
+		}
+		return string(output), fmt.Errorf("reload: %w", err)
+	}
+	return string(output), nil
 }
 
 func (t *Timeline) Targets() []promconfig.ScrapeConfig {

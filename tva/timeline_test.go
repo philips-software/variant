@@ -740,7 +740,7 @@ func TestNewTimeline(t *testing.T) {
 		tva.WithDebug(true),
 		tva.WithFrequency(5),
 		tva.WithTenants("default"),
-		tva.WithReload(true),
+		tva.WithReload(false),
 	)
 	if !assert.Nil(t, err) {
 		return
@@ -783,7 +783,7 @@ func TestReconcile(t *testing.T) {
 		tva.WithDebug(true),
 		tva.WithFrequency(5),
 		tva.WithTenants("default"),
-		tva.WithReload(true),
+		tva.WithReload(false),
 	)
 	if !assert.Nil(t, err) {
 		return
@@ -845,7 +845,7 @@ func TestWithSpaces(t *testing.T) {
 		tva.WithFrequency(5),
 		tva.WithTenants("default"),
 		tva.WithSpaces("b6b0855f-df85-41c8-8b6f-52b3a1eabb3d"),
-		tva.WithReload(true),
+		tva.WithReload(false),
 	)
 	if !assert.Nil(t, err) {
 		return
@@ -893,7 +893,7 @@ func TestWithBogusSpaces(t *testing.T) {
 	}
 	timeline, err := tva.NewTimeline(config,
 		tva.WithSpaces("dummy-space"),
-		tva.WithReload(true),
+		tva.WithReload(false),
 	)
 	if !assert.Nil(t, err) {
 		return
