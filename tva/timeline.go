@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"path"
 	"regexp"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -32,6 +34,7 @@ const (
 	AnnotationTargetsPort         = "prometheus.targets.port"
 	AnnotationTargetsPath         = "prometheus.targets.path"
 	AnnotationRulesJSON           = "prometheus.rules.json"
+	ConfigHashKey                 = "prometheus-config-hash"
 )
 
 var (
@@ -156,7 +159,16 @@ func (t *Timeline) Start() (done chan bool) {
 func (t *Timeline) saveAndReload(newConfig string, files ruleFiles) error {
 	folder := path.Dir(t.config.PrometheusConfig)
 
-	for n, r := range files {
+	var configData string
+	var keys []string
+	for n := range files {
+		keys = append(keys, n)
+	}
+	// Render in known order
+	sort.Strings(keys)
+	for i := 0; i < len(keys); i++ {
+		n := keys[i]
+		r := files[n]
 		content := rules.RuleGroups{
 			Groups: []rules.RuleGroup{
 				{
@@ -168,7 +180,17 @@ func (t *Timeline) saveAndReload(newConfig string, files ruleFiles) error {
 		ruleFile := path.Join(folder, n)
 		output, _ := yaml.Marshal(content)
 		_ = ioutil.WriteFile(ruleFile, output, 0644)
+		configData = configData + string(output)
 	}
+	configData = configData + newConfig
+	// Check if we actually need to reload
+	md5Hash := GetMD5Hash(configData)
+	if hash, ok := t.Cache.Get(ConfigHashKey); ok {
+		if strings.EqualFold(hash.(string), md5Hash) { // No change!
+			return nil
+		}
+	}
+	t.Cache.Set(ConfigHashKey, md5Hash, 0)
 
 	if err := ioutil.WriteFile(t.config.PrometheusConfig, []byte(newConfig), 0644); err != nil {
 		return fmt.Errorf("save config: %w", err)
@@ -176,6 +198,7 @@ func (t *Timeline) saveAndReload(newConfig string, files ruleFiles) error {
 	if !t.reload { // Prometheus/Thanos uses inotify
 		return nil
 	}
+
 	resp, err := http.Post(t.config.ThanosURL+"/-/reload", "application/json", nil)
 	if err != nil {
 		return fmt.Errorf("reload config: %w", err)

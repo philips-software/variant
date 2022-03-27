@@ -2,6 +2,8 @@ package tva
 
 import (
 	"bytes"
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -275,4 +277,9 @@ func GeneratePoliciesAndScrapeConfigs(session *clients.Session, internalDomainID
 	}
 	configs = append(configs, scrapeConfig)
 	return policies, configs, nil
+}
+
+func GetMD5Hash(cfg string) string {
+	hash := md5.Sum([]byte(cfg))
+	return hex.EncodeToString(hash[:])
 }

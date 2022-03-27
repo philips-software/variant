@@ -918,3 +918,41 @@ func TestWithBogusSpaces(t *testing.T) {
 		return
 	}
 }
+
+func TestConfigCache(t *testing.T) {
+	teardown := setup(t)
+	defer teardown()
+
+	config := tva.Config{
+		Config: clients.Config{
+			Endpoint: serverCF.URL,
+			User:     "ron",
+			Password: "swanson",
+		},
+		PrometheusConfig: prometheusConfig,
+		InternalDomainID: internalDomainID,
+		ThanosID:         thanosID,
+		ThanosURL:        serverThanos.URL,
+	}
+	timeline, err := tva.NewTimeline(config,
+		tva.WithSpaces("dummy-space"),
+		tva.WithReload(false),
+	)
+	if !assert.Nil(t, err) {
+		return
+	}
+	if !assert.NotNil(t, timeline) {
+		return
+	}
+
+	_, err = timeline.Reconcile()
+	if !assert.Nil(t, err) {
+		return
+	}
+	md5Cache, ok := timeline.Cache.Get(tva.ConfigHashKey)
+	if !assert.True(t, ok) {
+		return
+	}
+	assert.Equal(t, "245723b6792bcde29b29fc7686723bca", md5Cache)
+
+}

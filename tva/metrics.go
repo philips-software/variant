@@ -6,4 +6,6 @@ type Metrics interface {
 	SetDetectedScrapeConfigs(float64)
 	IncTotalIncursions()
 	IncErrorIncursions()
+	IncConfigLoads()
+	IncConfigCacheHits()
 }

@@ -26,10 +26,22 @@ type metrics struct {
 	DetectedScrapeConfigs  prometheus.Gauge
 	TotalIncursions        prometheus.Counter
 	ErrorIncursions        prometheus.Counter
+	ConfigLoads            prometheus.Counter
+	ConfigCacheHits        prometheus.Counter
 }
+
+var _ tva.Metrics = (*metrics)(nil)
 
 func (m metrics) SetScrapeInterval(v float64) {
 	m.ScrapeInterval.Set(v)
+}
+
+func (m metrics) IncConfigLoads() {
+	m.ConfigLoads.Inc()
+}
+
+func (m metrics) IncConfigCacheHits() {
+	m.ConfigCacheHits.Inc()
 }
 
 func (m metrics) SetManagedNetworkPolicies(v float64) {
@@ -114,6 +126,14 @@ func main() {
 		ErrorIncursions: promauto.NewCounter(prometheus.CounterOpts{
 			Name: "variant_incursions_error",
 			Help: "Total number of incursions that went wrong",
+		}),
+		ConfigCacheHits: promauto.NewCounter(prometheus.CounterOpts{
+			Name: "variant_config_cache_hits_total",
+			Help: "Total number of config file cache hits",
+		}),
+		ConfigLoads: promauto.NewCounter(prometheus.CounterOpts{
+			Name: "variant_config_loads_total",
+			Help: "Total number of Prometheus config reload requests",
 		}),
 	}
 
