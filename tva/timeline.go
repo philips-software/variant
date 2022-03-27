@@ -187,6 +187,9 @@ func (t *Timeline) saveAndReload(newConfig string, files ruleFiles) error {
 	md5Hash := GetMD5Hash(configData)
 	if hash, ok := t.Cache.Get(ConfigHashKey); ok {
 		if strings.EqualFold(hash.(string), md5Hash) { // No change!
+			if t.metrics != nil {
+				t.metrics.IncConfigCacheHits()
+			}
 			return nil
 		}
 	}
@@ -198,7 +201,9 @@ func (t *Timeline) saveAndReload(newConfig string, files ruleFiles) error {
 	if !t.reload { // Prometheus/Thanos uses inotify
 		return nil
 	}
-
+	if t.metrics != nil {
+		t.metrics.IncConfigLoads()
+	}
 	resp, err := http.Post(t.config.ThanosURL+"/-/reload", "application/json", nil)
 	if err != nil {
 		return fmt.Errorf("reload config: %w", err)
