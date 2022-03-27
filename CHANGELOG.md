@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## v0.0.32
+
+- feat: Conditioanl reloading (#33)
+- feat: Detect loading errors (#32)
+
 ## v0.0.31
 
 - Bugfix: space filtering was broken
