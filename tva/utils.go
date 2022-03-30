@@ -129,6 +129,36 @@ func MetadataRetrieve(client *clients.RawClient, guid string) (Metadata, error) 
 	return metadataReq.Metadata, nil
 }
 
+func ParseAutoscaler(metadata Metadata) (*Autoscaler, error) {
+	var scaler Autoscaler
+	scalerJSON := metadata.Annotations[AnnotationAutoscalerJSON]
+
+	if scalerJSON == nil {
+		return nil, fmt.Errorf("missing annotation '%s'", AnnotationAutoscalerJSON)
+	}
+	err := json.NewDecoder(bytes.NewBufferString(*scalerJSON)).Decode(&scaler)
+	if err != nil {
+		return nil, fmt.Errorf("decoding scaler JSON: %w", err)
+	}
+	// Defaults
+	if scaler.Min < 1 {
+		scaler.Min = 1
+	}
+	if scaler.Max > 50 {
+		scaler.Max = 50
+	}
+	if scaler.Window == "" {
+		scaler.Window = "1m"
+	}
+	if scaler.Expression == "" {
+		scaler.Expression = "query_result > 80"
+	}
+	if scaler.Query == "" {
+		scaler.Query = `avg(avg_over_time(cpu{guid="{{ guid }}"}[{{ window }}]))`
+	}
+	return &scaler, nil
+}
+
 func ParseRules(metadata Metadata) ([]rules.RuleNode, error) {
 	var foundRules []rules.RuleNode
 
