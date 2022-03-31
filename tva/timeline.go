@@ -510,8 +510,9 @@ func (t *Timeline) evalAutoscalers() error {
 		return fmt.Errorf("session: %w", err)
 	}
 	for guid, scalers := range t.autoScalers {
+		fmt.Printf("Autoscaler processing for %s\n", guid)
 		for _, a := range scalers {
-			fmt.Printf("Autoscaler for %s: %v\n", guid, a)
+			fmt.Printf("Scaler config: %v\n", a)
 			// query for current req/sec
 			query, err := a.RenderQuery()
 			if err != nil {
@@ -525,7 +526,7 @@ func (t *Timeline) evalAutoscalers() error {
 				continue
 			}
 			if len(warnings) > 0 {
-				fmt.Println(fmt.Sprintf("warnings: %v", warnings))
+				fmt.Printf("warnings: %v\n", warnings)
 			}
 			// match the response to vector and print the response values
 			switch r := res.(type) {
@@ -562,7 +563,6 @@ func (t *Timeline) evalAutoscalers() error {
 					continue
 				}
 				fmt.Printf("Expression result: %v\n", out.(bool))
-				instances := a.Min // Lowest
 				scaleUp := out.(bool)
 
 				// Interact with CF API
@@ -571,6 +571,7 @@ func (t *Timeline) evalAutoscalers() error {
 					fmt.Printf("error getting processes: %v\n", err)
 					continue
 				}
+				var instances int
 				for _, p := range processes { // Assume we have only a single process for now
 					current := p.Instances.Value
 					if scaleUp {
