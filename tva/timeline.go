@@ -582,14 +582,29 @@ func (t *Timeline) evalAutoscalers() error {
 				if instances > a.Max {
 					instances = a.Max
 				}
+				if p.Instances.Value == instances {
+					fmt.Printf("Already at right scale for %v, instances = %d\n", p.GUID, instances)
+					continue
+				}
+
 				p.Instances = types.NullInt{
 					IsSet: true,
 					Value: instances,
 				}
 				fmt.Printf("Scaling process %v to %d\n", p.GUID, instances)
-				_, _, err = session.V3().UpdateProcess(p)
+				scaleRequest := ccv3.Process{
+					Type: p.Type,
+					Instances: types.NullInt{
+						IsSet: true,
+						Value: instances,
+					},
+					MemoryInMB: p.MemoryInMB,
+					DiskInMB:   p.DiskInMB,
+				}
+				v3Session := session.V3()
+				resp, warnings, err := v3Session.CreateApplicationProcessScale(p.GUID, scaleRequest)
 				if err != nil {
-					fmt.Printf("error scaling: %v\n", err)
+					fmt.Printf("error scaling: %v %v %v\n", resp, warnings, err)
 				}
 			}
 		default:
