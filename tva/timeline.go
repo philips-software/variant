@@ -66,7 +66,7 @@ type Timeline struct {
 	targets       []promconfig.ScrapeConfig
 	Selectors     []string
 	spaces        []string
-	autoScalers   map[string]Autoscaler
+	autoScalers   map[string][]Autoscaler
 	defaultTenant bool
 	startState    []cfnetv1.Policy
 	knownVariants map[string]bool
@@ -100,7 +100,7 @@ func NewTimeline(config Config, opts ...OptionFunc) (*Timeline, error) {
 		Selectors:     []string{fmt.Sprintf("%s=true", ExporterLabel)},
 		config:        config,
 		knownVariants: make(map[string]bool),
-		autoScalers:   make(map[string]Autoscaler),
+		autoScalers:   make(map[string][]Autoscaler),
 	}
 	data, err := ioutil.ReadFile(config.PrometheusConfig)
 	if err != nil {
@@ -354,18 +354,16 @@ func (t *Timeline) Reconcile() (string, error) {
 			// TODO: record error here
 			continue
 		}
-		scaler, err := ParseAutoscaler(metadata)
+		scalers, err := ParseAutoscaler(metadata)
 		if err != nil {
 			fmt.Printf("error: %v\n", err)
 			continue
 		}
-		scaler.GUID = app.GUID
-		if existing, ok := t.autoScalers[app.GUID]; ok { // Update
-			scaler.LastEval = existing.LastEval
-			t.autoScalers[app.GUID] = *scaler
-		} else {
-			t.autoScalers[app.GUID] = *scaler
+		for i := 0; i < len(*scalers); i++ {
+			(*scalers)[i].GUID = app.GUID
 		}
+		// TODO: Figure out a way to hash autoscaler rules so we can merge them correctly
+		t.autoScalers[app.GUID] = *scalers
 	}
 	_ = t.evalAutoscalers()
 
@@ -511,104 +509,106 @@ func (t *Timeline) evalAutoscalers() error {
 	if err != nil {
 		return fmt.Errorf("session: %w", err)
 	}
-	for guid, a := range t.autoScalers {
-		fmt.Printf("Autoscaler for %s: %v\n", guid, a)
-		// query for current req/sec
-		query, err := a.RenderQuery()
-		if err != nil {
-			fmt.Printf("Error rendering query: %v\n", err)
-			continue
-		}
-		fmt.Printf("Query: %s\n", query)
-		res, warnings, err := t.v1API.Query(context.Background(), query, time.Now())
-		if err != nil {
-			fmt.Printf("Error querying: %v\n", err)
-			continue
-		}
-		if len(warnings) > 0 {
-			fmt.Println(fmt.Sprintf("warnings: %v", warnings))
-		}
-		// match the response to vector and print the response values
-		switch r := res.(type) {
-		case model.Vector:
-			// we can assume for this example the len will be 1, but for a real world problem we'd want to add functionality
-			// to sum the values or require the expression to use a map:
-			// https://github.com/antonmedv/expr/blob/master/docs/Language-Definition.md#builtin-functions
-			if r.Len() != 1 {
-				fmt.Printf("unexpected result length\n")
-				continue
-			}
-			v, err := strconv.ParseFloat(r[0].Value.String(), 64)
+	for guid, scalers := range t.autoScalers {
+		for _, a := range scalers {
+			fmt.Printf("Autoscaler for %s: %v\n", guid, a)
+			// query for current req/sec
+			query, err := a.RenderQuery()
 			if err != nil {
-				fmt.Printf("error parsing float: %v\n", err)
+				fmt.Printf("Error rendering query: %v\n", err)
 				continue
 			}
-
-			// variables to be compiled
-			env := map[string]interface{}{
-				"query_result": v,
-			}
-
-			// compile the expression with options
-			program, err := expr.Compile(a.Expression, expr.Env(env))
+			fmt.Printf("Query: %s\n", query)
+			res, warnings, err := t.v1API.Query(context.Background(), query, time.Now())
 			if err != nil {
-				fmt.Printf("error compiling expression: %v\n", err)
+				fmt.Printf("Error querying: %v\n", err)
 				continue
 			}
-
-			// run the compiled expression with the values from env
-			out, err := expr.Run(program, env)
-			if err != nil {
-				fmt.Printf("error running expression: %v\n", err)
-				continue
+			if len(warnings) > 0 {
+				fmt.Println(fmt.Sprintf("warnings: %v", warnings))
 			}
-			fmt.Printf("Expression result: %v\n", out.(bool))
-			instances := a.Min // Lowest
-			scaleUp := out.(bool)
-
-			// Interact with CF API
-			processes, _, err := session.V3().GetApplicationProcesses(guid)
-			if err != nil {
-				fmt.Printf("error getting processes: %v\n", err)
-				continue
-			}
-			for _, p := range processes { // Assume we have only a single process for now
-				current := p.Instances.Value
-				if scaleUp {
-					instances = current + 1
-				} else {
-					instances = a.Min
+			// match the response to vector and print the response values
+			switch r := res.(type) {
+			case model.Vector:
+				// we can assume for this example the len will be 1, but for a real world problem we'd want to add functionality
+				// to sum the values or require the expression to use a map:
+				// https://github.com/antonmedv/expr/blob/master/docs/Language-Definition.md#builtin-functions
+				if r.Len() != 1 {
+					fmt.Printf("unexpected result length\n")
+					continue
 				}
-				if instances > a.Max {
-					instances = a.Max
-				}
-				if p.Instances.Value == instances {
-					fmt.Printf("Already at right scale for %v, instances = %d\n", p.GUID, instances)
+				v, err := strconv.ParseFloat(r[0].Value.String(), 64)
+				if err != nil {
+					fmt.Printf("error parsing float: %v\n", err)
 					continue
 				}
 
-				p.Instances = types.NullInt{
-					IsSet: true,
-					Value: instances,
+				// variables to be compiled
+				env := map[string]interface{}{
+					"query_result": v,
 				}
-				fmt.Printf("Scaling process %v to %d\n", p.GUID, instances)
-				scaleRequest := ccv3.Process{
-					Type: p.Type,
-					Instances: types.NullInt{
+
+				// compile the expression with options
+				program, err := expr.Compile(a.Expression, expr.Env(env))
+				if err != nil {
+					fmt.Printf("error compiling expression: %v\n", err)
+					continue
+				}
+
+				// run the compiled expression with the values from env
+				out, err := expr.Run(program, env)
+				if err != nil {
+					fmt.Printf("error running expression: %v\n", err)
+					continue
+				}
+				fmt.Printf("Expression result: %v\n", out.(bool))
+				instances := a.Min // Lowest
+				scaleUp := out.(bool)
+
+				// Interact with CF API
+				processes, _, err := session.V3().GetApplicationProcesses(guid)
+				if err != nil {
+					fmt.Printf("error getting processes: %v\n", err)
+					continue
+				}
+				for _, p := range processes { // Assume we have only a single process for now
+					current := p.Instances.Value
+					if scaleUp {
+						instances = current + 1
+					} else {
+						instances = a.Min
+					}
+					if instances > a.Max {
+						instances = a.Max
+					}
+					if p.Instances.Value == instances {
+						fmt.Printf("Already at right scale for %v, instances = %d\n", p.GUID, instances)
+						continue
+					}
+
+					p.Instances = types.NullInt{
 						IsSet: true,
 						Value: instances,
-					},
-					MemoryInMB: p.MemoryInMB,
-					DiskInMB:   p.DiskInMB,
+					}
+					fmt.Printf("Scaling process %v to %d\n", p.GUID, instances)
+					scaleRequest := ccv3.Process{
+						Type: p.Type,
+						Instances: types.NullInt{
+							IsSet: true,
+							Value: instances,
+						},
+						MemoryInMB: p.MemoryInMB,
+						DiskInMB:   p.DiskInMB,
+					}
+					v3Session := session.V3()
+					resp, warnings, err := v3Session.CreateApplicationProcessScale(p.GUID, scaleRequest)
+					if err != nil {
+						fmt.Printf("error scaling: %v %v %v\n", resp, warnings, err)
+					}
 				}
-				v3Session := session.V3()
-				resp, warnings, err := v3Session.CreateApplicationProcessScale(p.GUID, scaleRequest)
-				if err != nil {
-					fmt.Printf("error scaling: %v %v %v\n", resp, warnings, err)
-				}
+			default:
+				fmt.Printf("not implemented\n")
 			}
-		default:
-			fmt.Printf("not implemented\n")
 		}
 	}
 	return nil
