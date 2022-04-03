@@ -67,6 +67,7 @@ type Timeline struct {
 	Selectors     []string
 	spaces        []string
 	autoScalers   map[string][]Autoscaler
+	scalerState   map[string]State
 	defaultTenant bool
 	startState    []cfnetv1.Policy
 	knownVariants map[string]bool
@@ -101,6 +102,7 @@ func NewTimeline(config Config, opts ...OptionFunc) (*Timeline, error) {
 		config:        config,
 		knownVariants: make(map[string]bool),
 		autoScalers:   make(map[string][]Autoscaler),
+		scalerState:   make(map[string]State),
 	}
 	data, err := ioutil.ReadFile(config.PrometheusConfig)
 	if err != nil {
@@ -359,10 +361,10 @@ func (t *Timeline) Reconcile() (string, error) {
 			fmt.Printf("error: %v\n", err)
 			continue
 		}
+		// Inject GUID into scaler record
 		for i := 0; i < len(*scalers); i++ {
 			(*scalers)[i].GUID = app.GUID
 		}
-		// TODO: Figure out a way to hash autoscaler rules so we can merge them correctly
 		t.autoScalers[app.GUID] = *scalers
 	}
 	_ = t.evalAutoscalers()
@@ -511,18 +513,55 @@ func (t *Timeline) evalAutoscalers() error {
 	}
 	for guid, scalers := range t.autoScalers {
 		fmt.Printf("Autoscaler processing for %s\n", guid)
-		for _, a := range scalers {
-			fmt.Printf("Scaler config: %v\n", a)
+		// Read current CF process info
+		processes, _, err := session.V3().GetApplicationProcesses(guid)
+		if err != nil {
+			fmt.Printf("error getting processes: %v\n", err)
+			continue
+		}
+		var process ccv3.Process
+		for _, p := range processes {
+			if p.Type == "web" {
+				process = p
+				break
+			}
+		}
+		if process.GUID != guid {
+			continue // No "web" process found
+		}
+		current := process.Instances.Value
+		min := 0
+
+		// Evaluate all defined scalers for this app
+		for i := 0; i < len(scalers); i++ {
+			hash := scalers[i].Hash()
+			state, ok := t.scalerState[hash]
+			if !ok { // New state
+				state = State{
+					Want: scalers[i].Min,
+				}
+				t.scalerState[hash] = state
+			}
+			fmt.Printf("Last eval: %v\n", state.LastEval)
+			state.LastEval = time.Now()
+			state.Current = current
+			// record minimum
+			if scalers[i].Min > min {
+				min = scalers[i].Min
+			}
+			fmt.Printf("Scaler config: %v\n", scalers[i])
 			// query for current req/sec
-			query, err := a.RenderQuery()
+			query, err := scalers[i].RenderQuery()
 			if err != nil {
 				fmt.Printf("Error rendering query: %v\n", err)
+				t.scalerState[hash] = state
 				continue
 			}
 			fmt.Printf("Query: %s\n", query)
 			res, warnings, err := t.v1API.Query(context.Background(), query, time.Now())
 			if err != nil {
 				fmt.Printf("Error querying: %v\n", err)
+				t.scalerState[hash] = state
 				continue
 			}
 			if len(warnings) > 0 {
@@ -536,11 +575,13 @@ func (t *Timeline) evalAutoscalers() error {
 				// https://github.com/antonmedv/expr/blob/master/docs/Language-Definition.md#builtin-functions
 				if r.Len() != 1 {
 					fmt.Printf("unexpected result length\n")
+					t.scalerState[hash] = state
 					continue
 				}
 				v, err := strconv.ParseFloat(r[0].Value.String(), 64)
 				if err != nil {
 					fmt.Printf("error parsing float: %v\n", err)
+					t.scalerState[hash] = state
 					continue
 				}
 
@@ -550,9 +591,10 @@ func (t *Timeline) evalAutoscalers() error {
 				}
 
 				// compile the expression with options
-				program, err := expr.Compile(a.Expression, expr.Env(env))
+				program, err := expr.Compile(scalers[i].Expression, expr.Env(env))
 				if err != nil {
 					fmt.Printf("error compiling expression: %v\n", err)
+					t.scalerState[hash] = state
 					continue
 				}
 
@@ -560,56 +602,54 @@ func (t *Timeline) evalAutoscalers() error {
 				out, err := expr.Run(program, env)
 				if err != nil {
 					fmt.Printf("error running expression: %v\n", err)
+					t.scalerState[hash] = state
 					continue
 				}
 				fmt.Printf("Expression result: %v\n", out.(bool))
 				scaleUp := out.(bool)
 
-				// Interact with CF API
-				processes, _, err := session.V3().GetApplicationProcesses(guid)
-				if err != nil {
-					fmt.Printf("error getting processes: %v\n", err)
+				if scaleUp {
+					state.Want = state.Current + 1
+					if state.Want > scalers[i].Max {
+						state.Want = scalers[i].Max
+					}
+				} else { // Rapid scale down
+					state.Want = scalers[i].Min
+					t.scalerState[hash] = state
 					continue
-				}
-				var instances int
-				for _, p := range processes { // Assume we have only a single process for now
-					current := p.Instances.Value
-					if scaleUp {
-						instances = current + 1
-					} else {
-						instances = a.Min
-					}
-					if instances > a.Max {
-						instances = a.Max
-					}
-					if p.Instances.Value == instances {
-						fmt.Printf("Already at right scale for %v, instances = %d\n", p.GUID, instances)
-						continue
-					}
-
-					p.Instances = types.NullInt{
-						IsSet: true,
-						Value: instances,
-					}
-					fmt.Printf("Scaling process %v to %d\n", p.GUID, instances)
-					scaleRequest := ccv3.Process{
-						Type: p.Type,
-						Instances: types.NullInt{
-							IsSet: true,
-							Value: instances,
-						},
-						MemoryInMB: p.MemoryInMB,
-						DiskInMB:   p.DiskInMB,
-					}
-					v3Session := session.V3()
-					resp, warnings, err := v3Session.CreateApplicationProcessScale(p.GUID, scaleRequest)
-					if err != nil {
-						fmt.Printf("error scaling: %v %v %v\n", resp, warnings, err)
-					}
 				}
 			default:
 				fmt.Printf("not implemented\n")
 			}
+			t.scalerState[hash] = state
+		}
+
+		scaleTo := min
+		for _, s := range scalers {
+			if state, ok := t.scalerState[s.Hash()]; ok {
+				if state.Want > scaleTo {
+					scaleTo = state.Want
+				}
+			}
+		}
+		if current == scaleTo {
+			fmt.Printf("Already at right scale for %v, instances = %d\n", process.GUID, scaleTo)
+			continue
+		}
+		fmt.Printf("Scaling process %v to %d\n", process.GUID, scaleTo)
+		scaleRequest := ccv3.Process{
+			Type: process.Type,
+			Instances: types.NullInt{
+				IsSet: true,
+				Value: scaleTo,
+			},
+			MemoryInMB: process.MemoryInMB,
+			DiskInMB:   process.DiskInMB,
+		}
+		v3Session := session.V3()
+		resp, warnings, err := v3Session.CreateApplicationProcessScale(guid, scaleRequest)
+		if err != nil {
+			fmt.Printf("error scaling: %v %v %v\n", resp, warnings, err)
 		}
 	}
 	return nil
