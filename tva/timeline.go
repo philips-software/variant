@@ -356,14 +356,10 @@ func (t *Timeline) Reconcile() (string, error) {
 			// TODO: record error here
 			continue
 		}
-		scalers, err := ParseAutoscaler(metadata)
+		scalers, err := ParseAutoscaler(metadata, app.GUID)
 		if err != nil {
 			fmt.Printf("error: %v\n", err)
 			continue
-		}
-		// Inject GUID into scaler record
-		for i := 0; i < len(*scalers); i++ {
-			(*scalers)[i].GUID = app.GUID
 		}
 		t.autoScalers[app.GUID] = *scalers
 	}
@@ -615,8 +611,6 @@ func (t *Timeline) evalAutoscalers() error {
 					}
 				} else { // Rapid scale down
 					state.Want = scalers[i].Min
-					t.scalerState[hash] = state
-					continue
 				}
 			default:
 				fmt.Printf("not implemented\n")

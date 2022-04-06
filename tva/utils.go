@@ -129,7 +129,7 @@ func MetadataRetrieve(client *clients.RawClient, guid string) (Metadata, error) 
 	return metadataReq.Metadata, nil
 }
 
-func ParseAutoscaler(metadata Metadata) (*[]Autoscaler, error) {
+func ParseAutoscaler(metadata Metadata, appGUID string) (*[]Autoscaler, error) {
 	var scalers []Autoscaler
 	scalerJSON := metadata.Annotations[AnnotationAutoscalerJSON]
 
@@ -157,6 +157,7 @@ func ParseAutoscaler(metadata Metadata) (*[]Autoscaler, error) {
 		if scalers[i].Query == "" {
 			scalers[i].Query = `avg(avg_over_time(cpu{guid="{{ guid }}"}[{{ window }}]))`
 		}
+		scalers[i].GUID = appGUID
 	}
 	return &scalers, nil
 }
