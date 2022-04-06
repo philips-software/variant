@@ -133,18 +133,17 @@ func ParseRules(metadata Metadata) ([]rules.RuleNode, error) {
 	var foundRules []rules.RuleNode
 
 	rulesJSON := metadata.Annotations[AnnotationRulesJSON]
-	if rulesJSON == nil {
-		return foundRules, fmt.Errorf("missing annotation '%s'", AnnotationRulesJSON)
-	}
-	err := json.NewDecoder(bytes.NewBufferString(*rulesJSON)).Decode(&foundRules)
-	if err != nil {
-		return foundRules, err
+	if rulesJSON != nil {
+		err := json.NewDecoder(bytes.NewBufferString(*rulesJSON)).Decode(&foundRules)
+		if err != nil {
+			return foundRules, err
+		}
 	}
 	// Add indexed entries as well
 	for k, v := range metadata.Annotations {
 		if AnnotationRulesIndexJSONRegex.MatchString(k) {
 			var rule rules.RuleNode
-			err = json.NewDecoder(bytes.NewBufferString(*v)).Decode(&rule)
+			err := json.NewDecoder(bytes.NewBufferString(*v)).Decode(&rule)
 			if err != nil {
 				continue
 			}
