@@ -24,7 +24,7 @@ jobs:
         name: Login to HSDP Docker registry
         uses: docker/login-action@v1
         with:
-          registry: docker.na1.hsdp.io
+          registry: docker.eu1.hsdp.io
           username: ${{ secrets.HSDP_DOCKER_USERNAME }}
           password: ${{ secrets.HSDP_DOCKER_PASSWORD }}
       - uses: actions/checkout@v3
@@ -36,6 +36,4 @@ jobs:
           file: ./Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: philipssoftware/variant,docker.na1.hsdp.io/philipssoftware/variant
-          cache-from: type=registry,ref=philipssoftware/variant:buildcache
-          cache-to: type=registry,ref=philipssoftware/variant:buildcache,mode=max
+          tags: philipssoftware/variant,docker.eu1.hsdp.io/philipssoftware/variant
