@@ -1,12 +1,14 @@
 package tva
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"path"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -14,10 +16,15 @@ import (
 	"code.cloudfoundry.org/cfnetworking-cli-api/cfnetworking/cfnetv1"
 	"code.cloudfoundry.org/cli/api/cloudcontroller/ccv3"
 	"code.cloudfoundry.org/cli/resources"
+	"code.cloudfoundry.org/cli/types"
+	"github.com/antonmedv/expr"
 	clients "github.com/cloudfoundry-community/go-cf-clients-helper"
 	"github.com/patrickmn/go-cache"
 	"github.com/percona/promconfig"
 	"github.com/percona/promconfig/rules"
+	"github.com/prometheus/client_golang/api"
+	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
+	"github.com/prometheus/common/model"
 	"gopkg.in/yaml.v2"
 )
 
@@ -25,6 +32,7 @@ const (
 	ExporterLabel                 = "variant.tva/exporter"
 	TenantLabel                   = "variant.tva/tenant"
 	RulesLabel                    = "variant.tva/rules"
+	AutoscalerLabel               = "variant.tva/autoscaler"
 	AnnotationInstanceName        = "prometheus.exporter.instance_name"
 	AnnotationInstanceSourceRegex = "prometheus.exporter.instance_source_regex"
 	AnnotationExporterPort        = "prometheus.exporter.port"
@@ -34,6 +42,7 @@ const (
 	AnnotationTargetsPort         = "prometheus.targets.port"
 	AnnotationTargetsPath         = "prometheus.targets.path"
 	AnnotationRulesJSON           = "prometheus.rules.json"
+	AnnotationAutoscalerJSON      = "variant.autoscaler.json"
 	ConfigHashKey                 = "prometheus-config-hash"
 )
 
@@ -53,9 +62,12 @@ type Timeline struct {
 	sync.Mutex
 	*clients.Session
 	*cache.Cache
+	v1API         v1.API
 	targets       []promconfig.ScrapeConfig
 	Selectors     []string
 	spaces        []string
+	autoScalers   map[string][]Autoscaler
+	scalerState   map[string]State
 	defaultTenant bool
 	startState    []cfnetv1.Policy
 	knownVariants map[string]bool
@@ -89,6 +101,8 @@ func NewTimeline(config Config, opts ...OptionFunc) (*Timeline, error) {
 		Selectors:     []string{fmt.Sprintf("%s=true", ExporterLabel)},
 		config:        config,
 		knownVariants: make(map[string]bool),
+		autoScalers:   make(map[string][]Autoscaler),
+		scalerState:   make(map[string]State),
 	}
 	data, err := ioutil.ReadFile(config.PrometheusConfig)
 	if err != nil {
@@ -117,6 +131,16 @@ func NewTimeline(config Config, opts ...OptionFunc) (*Timeline, error) {
 		}
 	}
 	timeline.Cache = cache.New(720*time.Minute, 1440*time.Minute)
+
+	// Autoscaler setup
+	promClient, err := api.NewClient(api.Config{
+		Address: config.ThanosURL,
+	})
+	if err != nil {
+		return nil, err
+	}
+	timeline.v1API = v1.NewAPI(promClient)
+
 	return timeline, nil
 }
 
@@ -267,6 +291,17 @@ func (t *Timeline) Reconcile() (string, error) {
 			fmt.Printf("found %d apps after tenant filtering\n", len(apps))
 		}
 	}
+	// Retrieve apps with autoscalers
+	appsWithAutoscalers, _, err := session.V3().GetApplications(ccv3.Query{
+		Key: "label_selector",
+		Values: []string{
+			fmt.Sprintf("%s=true", AutoscalerLabel),
+		},
+	})
+	if err != nil {
+		appsWithAutoscalers = []resources.Application{}
+	}
+
 	// Retrieve apps with rules
 	appsWithRules, _, err := session.V3().GetApplications(ccv3.Query{
 		Key: "label_selector",
@@ -280,6 +315,7 @@ func (t *Timeline) Reconcile() (string, error) {
 
 	apps = UniqApps(apps)
 	appsWithRules = UniqApps(appsWithRules)
+	appsWithAutoscalers = UniqApps(appsWithAutoscalers)
 
 	// Filter based on spaces list
 	if len(t.spaces) > 0 {
@@ -288,6 +324,7 @@ func (t *Timeline) Reconcile() (string, error) {
 		}
 		var filteredApps []resources.Application
 		var filteredAppsWithRules []resources.Application
+		var filteredAppsWithAutoscalers []resources.Application
 		for _, app := range apps {
 			if ContainsString(t.spaces, app.SpaceGUID) {
 				filteredApps = append(filteredApps, app)
@@ -303,7 +340,30 @@ func (t *Timeline) Reconcile() (string, error) {
 			}
 		}
 		appsWithRules = filteredAppsWithRules
+
+		for _, app := range appsWithAutoscalers {
+			if ContainsString(t.spaces, app.SpaceGUID) {
+				filteredAppsWithAutoscalers = append(filteredAppsWithAutoscalers, app)
+			}
+		}
+		appsWithAutoscalers = filteredAppsWithAutoscalers
 	}
+
+	// Autoscalers
+	for _, app := range appsWithAutoscalers {
+		metadata, err := MetadataRetrieve(session.Raw(), app.GUID)
+		if err != nil {
+			// TODO: record error here
+			continue
+		}
+		scalers, err := ParseAutoscaler(metadata, app.GUID)
+		if err != nil {
+			fmt.Printf("error: %v\n", err)
+			continue
+		}
+		t.autoScalers[app.GUID] = *scalers
+	}
+	_ = t.evalAutoscalers()
 
 	// Rules
 	ruleFilesToSave := make(ruleFiles)
@@ -439,6 +499,154 @@ func (t *Timeline) Reconcile() (string, error) {
 		return string(output), fmt.Errorf("reload: %w", err)
 	}
 	return string(output), nil
+}
+
+// This should move to a separate Go routine at some point
+func (t *Timeline) evalAutoscalers() error {
+	session, err := t.session()
+	if err != nil {
+		return fmt.Errorf("session: %w", err)
+	}
+	for guid, scalers := range t.autoScalers {
+		fmt.Printf("Autoscaler processing for %s\n", guid)
+		// Read current CF process info
+		processes, _, err := session.V3().GetApplicationProcesses(guid)
+		if err != nil {
+			fmt.Printf("error getting processes: %v\n", err)
+			continue
+		}
+		var process ccv3.Process
+		for _, p := range processes {
+			if p.Type == "web" {
+				process = p
+				break
+			}
+		}
+		if process.GUID != guid {
+			continue // No "web" process found
+		}
+		current := process.Instances.Value
+		min := 0
+
+		// Evaluate all defined scalers for this app
+		for i := 0; i < len(scalers); i++ {
+			hash := scalers[i].Hash()
+			state, ok := t.scalerState[hash]
+			if !ok { // New state
+				state = State{
+					Want: scalers[i].Min,
+				}
+				t.scalerState[hash] = state
+			}
+			fmt.Printf("Last eval: %v\n", state.LastEval)
+			state.LastEval = time.Now()
+			state.Current = current
+			// record minimum
+			if scalers[i].Min > min {
+				min = scalers[i].Min
+			}
+			fmt.Printf("Scaler config: %v\n", scalers[i])
+			// query for current req/sec
+			query, err := scalers[i].RenderQuery()
+			if err != nil {
+				fmt.Printf("Error rendering query: %v\n", err)
+				t.scalerState[hash] = state
+				continue
+			}
+			fmt.Printf("Query: %s\n", query)
+			res, warnings, err := t.v1API.Query(context.Background(), query, time.Now())
+			if err != nil {
+				fmt.Printf("Error querying: %v\n", err)
+				t.scalerState[hash] = state
+				continue
+			}
+			if len(warnings) > 0 {
+				fmt.Printf("warnings: %v\n", warnings)
+			}
+			// match the response to vector and print the response values
+			switch r := res.(type) {
+			case model.Vector:
+				// we can assume for this example the len will be 1, but for a real world problem we'd want to add functionality
+				// to sum the values or require the expression to use a map:
+				// https://github.com/antonmedv/expr/blob/master/docs/Language-Definition.md#builtin-functions
+				if r.Len() != 1 {
+					fmt.Printf("unexpected result length\n")
+					t.scalerState[hash] = state
+					continue
+				}
+				v, err := strconv.ParseFloat(r[0].Value.String(), 64)
+				if err != nil {
+					fmt.Printf("error parsing float: %v\n", err)
+					t.scalerState[hash] = state
+					continue
+				}
+
+				// variables to be compiled
+				env := map[string]interface{}{
+					"query_result": v,
+				}
+
+				// compile the expression with options
+				program, err := expr.Compile(scalers[i].Expression, expr.Env(env))
+				if err != nil {
+					fmt.Printf("error compiling expression: %v\n", err)
+					t.scalerState[hash] = state
+					continue
+				}
+
+				// run the compiled expression with the values from env
+				out, err := expr.Run(program, env)
+				if err != nil {
+					fmt.Printf("error running expression: %v\n", err)
+					t.scalerState[hash] = state
+					continue
+				}
+				fmt.Printf("Expression result: %v\n", out.(bool))
+				scaleUp := out.(bool)
+
+				if scaleUp {
+					state.Want = state.Current + 1
+					if state.Want > scalers[i].Max {
+						state.Want = scalers[i].Max
+					}
+				} else { // Rapid scale down
+					state.Want = scalers[i].Min
+				}
+			default:
+				fmt.Printf("not implemented\n")
+			}
+			t.scalerState[hash] = state
+		}
+
+		scaleTo := min
+		for _, s := range scalers {
+			if state, ok := t.scalerState[s.Hash()]; ok {
+				if state.Want > scaleTo {
+					scaleTo = state.Want
+				}
+			}
+		}
+		if current == scaleTo {
+			fmt.Printf("Already at right scale for %v, instances = %d\n", process.GUID, scaleTo)
+			continue
+		}
+		fmt.Printf("Scaling process %v to %d\n", process.GUID, scaleTo)
+		scaleRequest := ccv3.Process{
+			Type: process.Type,
+			Instances: types.NullInt{
+				IsSet: true,
+				Value: scaleTo,
+			},
+			MemoryInMB: process.MemoryInMB,
+			DiskInMB:   process.DiskInMB,
+		}
+		v3Session := session.V3()
+		resp, warnings, err := v3Session.CreateApplicationProcessScale(guid, scaleRequest)
+		if err != nil {
+			fmt.Printf("error scaling: %v %v %v\n", resp, warnings, err)
+		}
+	}
+	return nil
 }
 
 func (t *Timeline) Targets() []promconfig.ScrapeConfig {

@@ -1,7 +1,8 @@
 # Variant
 
 A sidecar for [Prometheus / Thanos](https://github.com/philips-labs/terraform-cloudfoundry-thanos) to discover scrape endpoints and rules.
-It also manages the required CF network policies to support scraping via `apps.internal` routes.
+It also manages the required CF network policies to support scraping via `apps.internal` routes. Finally, it supports configuring
+autoscaling of your CF applications based on arbitrary PromQL statements.
 
 ## Internals
 Variant uses the Cloud foundry API to:
@@ -25,8 +26,9 @@ The [Cloud foundry provider](https://registry.terraform.io/providers/philips-lab
 resource "cloudfoundry_app" "kong" {
   ...
   labels = {
-    "variant.tva/exporter" = true,
-    "variant.tva/rules"    = true,
+    "variant.tva/exporter"   = true
+    "variant.tva/rules"      = true
+    "variant.tva/autoscaler" = true
   }
   annotations = {
     "prometheus.exporter.port" = "8001"
@@ -43,7 +45,16 @@ resource "cloudfoundry_app" "kong" {
           summary = "Instance {{ $labels.instance }} has more than 2 waiting connections per minute"
           description = "{{ $labels.instance }} waiting http connections is at {{ $value }}"
         }
-      }])
+      }
+    ])
+    "variant.autoscaler.json" = jsonecode([
+      {
+        min = 2
+        max = 5
+        expr = "query_result > 80"
+        query = "avg(avg_over_time(cpu{guid=\"{{ guid }}\"}[{{ window }}]))"
+      }
+    ])
   }
 }
 ```
@@ -70,11 +81,12 @@ cf curl v3/apps/GUID \
 
 Labels control which CF apps `variant` will examine for exporters or rules
 
-| Label | Description |
-|-------|-------------|
-| `variant.tva/exporter=true` | Variant will examine this app for Metrics exporter endpoints |
-| `variant.tva/rules=true` | Variant will look for Prometheus rules in the annotations |
- | `variant.tva/tenant=default` | Optionally associate the app to a tenant bucket |
+| Label                         | Description                                                         |
+|-------------------------------|---------------------------------------------------------------------|
+| `variant.tva/exporter=true`   | Variant will examine this app for Metrics exporter endpoints        |
+| `variant.tva/rules=true`      | Variant will look for Prometheus rules in the annotations           |
+| `variant.tva/tenant=default`  | Optionally associate the app to a tenant bucket                     |
+ | `variant.tva/autoscaler=true` | Variant will look for Autoscaling configurations in the annotations | 
 
 ## Annotations
 
@@ -82,13 +94,13 @@ Annotations contain the configurations for metrics and rule definitions
 
 ### For exporters
 
-| Annotation | Description | Default       |
-|------------|-------------|---------------|
-| `prometheus.exporter.port` | The metrics ports to use | `9090` |
-| `prometheus.exporter.path` | The metrics path to use | `/metrics` |
-| `prometheus.exporter.instance_name` | The instance name to use (optional) | |
-| `promethues.targets.port` | The targets port to use (optional) | |
-| `prometheus.targets.path` | The targets path to use (optional) | `/targets` |
+| Annotation                          | Description                         | Default    |
+|-------------------------------------|-------------------------------------|------------|
+| `prometheus.exporter.port`          | The metrics ports to use            | `9090`     |
+| `prometheus.exporter.path`          | The metrics path to use             | `/metrics` |
+| `prometheus.exporter.instance_name` | The instance name to use (optional) |            |
+| `promethues.targets.port`           | The targets port to use (optional)  |            |
+| `prometheus.targets.path`           | The targets path to use (optional)  | `/targets` |
 
 ### For rules
 
@@ -99,6 +111,31 @@ Annotations contain the configurations for metrics and rule definitions
 
 When both formats are used the rules are merged in the final rule file rendering. This
 is useful to circumvent the `5000` character limit for annotation values in CF.
+
+### For autoscaler
+
+| Annotation                | Description               | Default            |
+|---------------------------|---------------------------|--------------------|
+| `variant.autoscaler.json` | JSON string of `[]Scaler` | `jsonencode('[]')` |
+
+The `Scaler` object has the following attributes 
+
+| Attribute | Description                                                                                                             | Default |
+|-----------|-------------------------------------------------------------------------------------------------------------------------|---------|
+ | `min`     | Minimum instances to scale to                                                                                           |         |
+ | `max`     | Maximum instances to scale to                                                                                           |         |
+ | `query`   | The PromQL query to execute                                                                                             |         |
+ | `expr`    | The expression to evaluate. Query result is `query_result`. If the expression evaluates to `true` the app will scale up |
+ | `window`  | The window to use for queries                                                                                           | `1m`    |
+
+The following placeholders may be used in the query definition
+
+| Placeholder    | Description                                         |
+|----------------|-----------------------------------------------------|
+ | `{{ guid }}`   | The application GUID. Useful as label in your query |
+ | `{{ window }}` | The window as defined in the Scaler object          |
+
+
 
 ## Limiting scraping scope
 

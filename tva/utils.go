@@ -129,6 +129,39 @@ func MetadataRetrieve(client *clients.RawClient, guid string) (Metadata, error) 
 	return metadataReq.Metadata, nil
 }
 
+func ParseAutoscaler(metadata Metadata, appGUID string) (*[]Autoscaler, error) {
+	var scalers []Autoscaler
+	scalerJSON := metadata.Annotations[AnnotationAutoscalerJSON]
+
+	if scalerJSON == nil {
+		return nil, fmt.Errorf("missing annotation '%s'", AnnotationAutoscalerJSON)
+	}
+	err := json.NewDecoder(bytes.NewBufferString(*scalerJSON)).Decode(&scalers)
+	if err != nil {
+		return nil, fmt.Errorf("decoding scaler JSON: %w", err)
+	}
+	// Defaults
+	for i := 0; i < len(scalers); i++ {
+		if scalers[i].Min < 1 {
+			scalers[i].Min = 1
+		}
+		if scalers[i].Max > 50 {
+			scalers[i].Max = 50
+		}
+		if scalers[i].Window == "" {
+			scalers[i].Window = "1m"
+		}
+		if scalers[i].Expression == "" {
+			scalers[i].Expression = "query_result > 80"
+		}
+		if scalers[i].Query == "" {
+			scalers[i].Query = `avg(avg_over_time(cpu{guid="{{ guid }}"}[{{ window }}]))`
+		}
+		scalers[i].GUID = appGUID
+	}
+	return &scalers, nil
+}
+
 func ParseRules(metadata Metadata) ([]rules.RuleNode, error) {
 	var foundRules []rules.RuleNode
 
