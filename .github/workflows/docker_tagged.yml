@@ -45,7 +45,7 @@ jobs:
         with:
           context: ./
           file: ./Dockerfile
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           push: true
           tags: philipssoftware/variant:${{ steps.vars.outputs.tag }},docker.eu1.hsdp.io/philipssoftware/variant:${{ steps.vars.outputs.tag }}
       -
