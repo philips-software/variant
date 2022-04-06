@@ -126,7 +126,7 @@ The `Scaler` object has the following attributes
  | `max`     | Maximum instances to scale to                                                                                           |         |
  | `query`   | The PromQL query to execute                                                                                             |         |
  | `expr`    | The expression to evaluate. Query result is `query_result`. If the expression evaluates to `true` the app will scale up |
- | `window`  | The window to use for queries                                                                                           | `2m`    |
+ | `window`  | The window to use for queries                                                                                           | `1m`    |
 
 The following placeholders may be used in the query definition
 
