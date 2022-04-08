@@ -1,7 +1,7 @@
 # Variant
 
 A sidecar for [Prometheus / Thanos](https://github.com/philips-labs/terraform-cloudfoundry-thanos) to discover scrape endpoints and rules.
-It also manages the required CF network policies to support scraping via `apps.internal` routes. Finally, it supports autoscaling of your CF applications based on arbitrary PromQL statements.
+It also manages the required CF network policies to support scraping via `apps.internal` routes. Finally, it can autoscale your CF applications based on arbitrary PromQL statements!
 
 ## Internals
 Variant uses the Cloud foundry API to:
