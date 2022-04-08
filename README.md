@@ -47,7 +47,7 @@ resource "cloudfoundry_app" "kong" {
         }
       }
     ])
-    "variant.autoscaler.json" = jsonecode([
+    "variant.autoscaler.json" = jsonencode([
       {
         min = 2
         max = 5
