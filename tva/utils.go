@@ -309,9 +309,9 @@ func GeneratePoliciesAndScrapeConfigs(session *clients.Session, internalDomainID
 		}
 	}
 	// Extra relabel config
-	if extra := metadata.Annotations[AnnotationRelabelConfig]; extra != nil {
+	if relabelConfigs := metadata.Annotations[AnnotationRelabelConfigs]; relabelConfigs != nil {
 		var relabelConfig []*RelabelConfig
-		err := json.Unmarshal([]byte(*extra), &relabelConfig)
+		err := json.Unmarshal([]byte(*relabelConfigs), &relabelConfig)
 		if err != nil {
 			return policies, configs, err
 		}
