@@ -231,6 +231,7 @@ func GeneratePoliciesAndScrapeConfigs(session *clients.Session, internalDomainID
 	if schema := metadata.Annotations[AnnotationExporterScheme]; schema != nil {
 		scheme = *schema
 	}
+
 	policies = append(policies, NewPolicy(source, app.GUID, portNumber))
 	internalHost, err := InternalHost(session, internalDomainID, app)
 	if err != nil {
@@ -305,6 +306,17 @@ func GeneratePoliciesAndScrapeConfigs(session *clients.Session, internalDomainID
 			HTTPSDConfigs: []*promconfig.HTTPSDConfig{
 				{URL: targetsURL},
 			},
+		}
+	}
+	// Extra relabel config
+	if relabelConfigs := metadata.Annotations[AnnotationRelabelConfigs]; relabelConfigs != nil {
+		var relabelConfig []*RelabelConfig
+		err := json.Unmarshal([]byte(*relabelConfigs), &relabelConfig)
+		if err != nil {
+			return policies, configs, err
+		}
+		for _, r := range relabelConfig {
+			scrapeConfig.RelabelConfigs = append(scrapeConfig.RelabelConfigs, r.ToProm())
 		}
 	}
 	configs = append(configs, scrapeConfig)

@@ -24,7 +24,7 @@ The [Cloud foundry provider](https://registry.terraform.io/providers/philips-lab
 
 ```hcl
 resource "cloudfoundry_app" "kong" {
-  ...
+  // Stuff here
   labels = {
     "variant.tva/exporter"   = true
     "variant.tva/rules"      = true
@@ -45,6 +45,13 @@ resource "cloudfoundry_app" "kong" {
           summary = "Instance {{ $labels.instance }} has more than 2 waiting connections per minute"
           description = "{{ $labels.instance }} waiting http connections is at {{ $value }}"
         }
+      }
+    ])
+    "prometheus.exporter.relabel_configs" = jsonencode([
+      {
+        source_labels = ["__name__"]
+        regex = "^(go|process).*$"
+        action = "drop"
       }
     ])
     "variant.autoscaler.json" = jsonencode([
@@ -94,13 +101,14 @@ Annotations contain the configurations for metrics and rule definitions
 
 ### For exporters
 
-| Annotation                          | Description                         | Default    |
-|-------------------------------------|-------------------------------------|------------|
-| `prometheus.exporter.port`          | The metrics ports to use            | `9090`     |
-| `prometheus.exporter.path`          | The metrics path to use             | `/metrics` |
-| `prometheus.exporter.instance_name` | The instance name to use (optional) |            |
-| `promethues.targets.port`           | The targets port to use (optional)  |            |
-| `prometheus.targets.path`           | The targets path to use (optional)  | `/targets` |
+| Annotation                             | Description                          | Default    |
+|----------------------------------------|--------------------------------------|------------|
+| `prometheus.exporter.port`             | The metrics ports to use             | `9090`     |
+| `prometheus.exporter.path`             | The metrics path to use              | `/metrics` |
+| `prometheus.exporter.instance_name`    | The instance name to use (optional)  |            |
+ | `prometheues.exporter.relabel_configs` | Relabel configs for this application |            |
+| `promethues.targets.port`              | The targets port to use (optional)   |            |
+| `prometheus.targets.path`              | The targets path to use (optional)   | `/targets` |
 
 ### For rules
 

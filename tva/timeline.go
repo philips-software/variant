@@ -35,6 +35,7 @@ const (
 	AutoscalerLabel               = "variant.tva/autoscaler"
 	AnnotationInstanceName        = "prometheus.exporter.instance_name"
 	AnnotationInstanceSourceRegex = "prometheus.exporter.instance_source_regex"
+	AnnotationRelabelConfigs      = "prometheus.exporter.relabel_configs"
 	AnnotationExporterPort        = "prometheus.exporter.port"
 	AnnotationExporterPath        = "prometheus.exporter.path"
 	AnnotationExporterScheme      = "prometheus.exporter.scheme"
