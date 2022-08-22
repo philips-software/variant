@@ -2,8 +2,11 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
+	"github.com/prometheus/common/log"
 	"net/http"
 	"os"
 	"variant/tva"
@@ -60,6 +63,33 @@ func (m metrics) IncErrorIncursions() {
 	m.ErrorIncursions.Inc()
 }
 
+func MetricsEndpointBasicAuthEnabled() bool {
+	return viper.GetString("basic_auth_username") != "" && viper.GetString("basic_auth_password") != ""
+}
+
+func BasicAuth(next http.Handler) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		username, password, ok := r.BasicAuth()
+		if ok {
+			usernameHash := sha256.Sum256([]byte(username))
+			passwordHash := sha256.Sum256([]byte(password))
+			expectedUsernameHash := sha256.Sum256([]byte(viper.GetString("basic_auth_username")))
+			expectedPasswordHash := sha256.Sum256([]byte(viper.GetString("basic_auth_password")))
+
+			usernameMatch := subtle.ConstantTimeCompare(usernameHash[:], expectedUsernameHash[:]) == 1
+			passwordMatch := subtle.ConstantTimeCompare(passwordHash[:], expectedPasswordHash[:]) == 1
+
+			if usernameMatch && passwordMatch {
+				next.ServeHTTP(w, r)
+				return
+			}
+		}
+
+		w.Header().Set("WWW-Authenticate", `Basic realm="restricted", charset="UTF-8"`)
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+	}
+}
+
 func main() {
 	var vcapApplication vcap.Application
 
@@ -70,6 +100,8 @@ func main() {
 	viper.SetDefault("refresh", 15)
 	viper.SetDefault("tenants", "default")
 	viper.SetDefault("spaces", "")
+	viper.SetDefault("basic_auth_username", "")
+	viper.SetDefault("basic_auth_password", "")
 	viper.SetDefault("reload", true)
 	viper.AutomaticEnv()
 
@@ -152,9 +184,15 @@ func main() {
 
 	done := timeline.Start()
 
+	if MetricsEndpointBasicAuthEnabled() {
+		http.Handle("/metrics", BasicAuth(promhttp.Handler()))
+	} else {
+		http.Handle("/metrics", promhttp.Handler())
+	}
+
 	// Self monitoring
-	http.Handle("/metrics", promhttp.Handler())
-	_ = http.ListenAndServe(fmt.Sprintf(":%d", listenPort), nil)
+	err = http.ListenAndServe(fmt.Sprintf(":%d", listenPort), nil)
+	log.Error(err)
 
 	done <- true
 }

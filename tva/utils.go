@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/spf13/viper"
 	"io/ioutil"
 	"strconv"
 	"strings"
@@ -187,6 +188,10 @@ func ParseRules(metadata Metadata) ([]rules.RuleNode, error) {
 	return foundRules, nil
 }
 
+func MetricsEndpointBasicAuthEnabled() bool {
+	return viper.GetString("basic_auth_username") != "" && viper.GetString("basic_auth_password") != ""
+}
+
 func GeneratePoliciesAndScrapeConfigs(session *clients.Session, internalDomainID, source string, app App) ([]cfnetv1.Policy, []promconfig.ScrapeConfig, error) {
 	var policies []cfnetv1.Policy
 	var configs []promconfig.ScrapeConfig
@@ -243,7 +248,10 @@ func GeneratePoliciesAndScrapeConfigs(session *clients.Session, internalDomainID
 		targets = append(targets, target)
 	}
 	scrapeConfig := promconfig.ScrapeConfig{
-		JobName:         jobName,
+		JobName: jobName,
+		HTTPClientConfig: promconfig.HTTPClientConfig{
+			FollowRedirects: true,
+		},
 		HonorTimestamps: true,
 		Scheme:          scheme,
 		MetricsPath:     scrapePath,
@@ -259,6 +267,15 @@ func GeneratePoliciesAndScrapeConfigs(session *clients.Session, internalDomainID
 				},
 			},
 		},
+	}
+	if MetricsEndpointBasicAuthEnabled() {
+		scrapeConfig.HTTPClientConfig = promconfig.HTTPClientConfig{
+			BasicAuth: &promconfig.BasicAuth{
+				Username: viper.GetString("basic_auth_username"),
+				Password: viper.GetString("basic_auth_password"),
+			},
+			FollowRedirects: true,
+		}
 	}
 	instanceName := ""
 	if name := metadata.Annotations[AnnotationInstanceName]; name != nil {
