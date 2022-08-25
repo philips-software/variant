@@ -6,7 +6,6 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
-	"github.com/prometheus/common/log"
 	"net/http"
 	"os"
 	"variant/tva"
@@ -192,7 +191,7 @@ func main() {
 
 	// Self monitoring
 	err = http.ListenAndServe(fmt.Sprintf(":%d", listenPort), nil)
-	log.Error(err)
+	fmt.Printf("%s", err.Error())
 
 	done <- true
 }
