@@ -62,10 +62,6 @@ func (m metrics) IncErrorIncursions() {
 	m.ErrorIncursions.Inc()
 }
 
-func MetricsEndpointBasicAuthEnabled() bool {
-	return viper.GetString("basic_auth_username") != "" && viper.GetString("basic_auth_password") != ""
-}
-
 func BasicAuth(next http.Handler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		username, password, ok := r.BasicAuth()
@@ -183,7 +179,7 @@ func main() {
 
 	done := timeline.Start()
 
-	if MetricsEndpointBasicAuthEnabled() {
+	if tva.MetricsEndpointBasicAuthEnabled() {
 		http.Handle("/metrics", BasicAuth(promhttp.Handler()))
 	} else {
 		http.Handle("/metrics", promhttp.Handler())
@@ -191,7 +187,10 @@ func main() {
 
 	// Self monitoring
 	err = http.ListenAndServe(fmt.Sprintf(":%d", listenPort), nil)
-	fmt.Printf("%s", err.Error())
+	if err != nil {
+		fmt.Printf("%s", err.Error())
+		return
+	}
 
 	done <- true
 }
