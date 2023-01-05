@@ -3,8 +3,9 @@ package tva
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
+	"os"
 	"path"
 	"regexp"
 	"sort"
@@ -29,22 +30,23 @@ import (
 )
 
 const (
-	ExporterLabel                 = "variant.tva/exporter"
-	TenantLabel                   = "variant.tva/tenant"
-	RulesLabel                    = "variant.tva/rules"
-	AutoscalerLabel               = "variant.tva/autoscaler"
-	AnnotationInstanceName        = "prometheus.exporter.instance_name"
-	AnnotationInstanceSourceRegex = "prometheus.exporter.instance_source_regex"
-	AnnotationRelabelConfigs      = "prometheus.exporter.relabel_configs"
-	AnnotationExporterPort        = "prometheus.exporter.port"
-	AnnotationExporterPath        = "prometheus.exporter.path"
-	AnnotationExporterScheme      = "prometheus.exporter.scheme"
-	AnnotationExporterJobName     = "prometheus.exporter.job_name"
-	AnnotationTargetsPort         = "prometheus.targets.port"
-	AnnotationTargetsPath         = "prometheus.targets.path"
-	AnnotationRulesJSON           = "prometheus.rules.json"
-	AnnotationAutoscalerJSON      = "variant.autoscaler.json"
-	ConfigHashKey                 = "prometheus-config-hash"
+	ExporterLabel                   = "variant.tva/exporter"
+	TenantLabel                     = "variant.tva/tenant"
+	RulesLabel                      = "variant.tva/rules"
+	AutoscalerLabel                 = "variant.tva/autoscaler"
+	AnnotationInstanceName          = "prometheus.exporter.instance_name"
+	AnnotationInstanceSourceRegex   = "prometheus.exporter.instance_source_regex"
+	AnnotationRelabelConfigs        = "prometheus.exporter.relabel_configs"
+	AnnotationExporterPort          = "prometheus.exporter.port"
+	AnnotationExporterPath          = "prometheus.exporter.path"
+	AnnotationExporterScheme        = "prometheus.exporter.scheme"
+	AnnotationExporterJobName       = "prometheus.exporter.job_name"
+	AnnotationExporterScrapInterval = "prometheus.exporter.scrape_interval"
+	AnnotationTargetsPort           = "prometheus.targets.port"
+	AnnotationTargetsPath           = "prometheus.targets.path"
+	AnnotationRulesJSON             = "prometheus.rules.json"
+	AnnotationAutoscalerJSON        = "variant.autoscaler.json"
+	ConfigHashKey                   = "prometheus-config-hash"
 )
 
 var (
@@ -105,7 +107,7 @@ func NewTimeline(config Config, opts ...OptionFunc) (*Timeline, error) {
 		autoScalers:   make(map[string][]Autoscaler),
 		scalerState:   make(map[string]State),
 	}
-	data, err := ioutil.ReadFile(config.PrometheusConfig)
+	data, err := os.ReadFile(config.PrometheusConfig)
 	if err != nil {
 		return nil, fmt.Errorf("read promethues config: %w", err)
 	}
@@ -204,7 +206,7 @@ func (t *Timeline) saveAndReload(newConfig string, files ruleFiles) error {
 		}
 		ruleFile := path.Join(folder, n)
 		output, _ := yaml.Marshal(content)
-		_ = ioutil.WriteFile(ruleFile, output, 0644)
+		_ = os.WriteFile(ruleFile, output, 0644)
 		configData = configData + string(output)
 	}
 	configData = configData + newConfig
@@ -220,7 +222,7 @@ func (t *Timeline) saveAndReload(newConfig string, files ruleFiles) error {
 	}
 	t.Cache.Set(ConfigHashKey, md5Hash, 0)
 
-	if err := ioutil.WriteFile(t.config.PrometheusConfig, []byte(newConfig), 0644); err != nil {
+	if err := os.WriteFile(t.config.PrometheusConfig, []byte(newConfig), 0644); err != nil {
 		return fmt.Errorf("save config: %w", err)
 	}
 	if !t.reload { // Prometheus/Thanos uses inotify
@@ -239,7 +241,7 @@ func (t *Timeline) saveAndReload(newConfig string, files ruleFiles) error {
 	if resp != nil && resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("reload config: StatusCode = %d", resp.StatusCode)
 	}
-	_, err = ioutil.ReadAll(resp.Body)
+	_, err = io.ReadAll(resp.Body)
 	return err
 }
 
