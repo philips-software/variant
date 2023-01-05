@@ -2,11 +2,12 @@ package tva_test
 
 import (
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"syscall"
 	"testing"
+	"time"
 	"variant/tva"
 
 	clients "github.com/cloudfoundry-community/go-cf-clients-helper"
@@ -41,12 +42,12 @@ func setup(t *testing.T) func() {
 	muxUAA = http.NewServeMux()
 	serverUAA = httptest.NewServer(muxUAA)
 
-	f, err := ioutil.TempFile("", "thanos.yml")
+	f, err := os.CreateTemp("", "thanos.yml")
 	if !assert.Nil(t, err) {
 		return func() {
 		}
 	}
-	_ = ioutil.WriteFile(f.Name(), []byte(`# my global config
+	_ = os.WriteFile(f.Name(), []byte(`# my global config
 global:
   scrape_interval: 15s # Set the scrape interval to every 15 seconds. Default is every 1 minute.
   evaluation_interval: 15s # Evaluate rules every 15 seconds. The default is every 1 minute.
@@ -317,6 +318,7 @@ scrape_configs:
         "annotations": {
           "prometheus.exporter.path": "/metrics",
           "prometheus.exporter.port": "8080",
+          "prometheus.exporter.scrape_interval": "30s",
 		  "prometheus.rules.json": "[{\"annotations\":{\"description\":\"{{ $labels.instance }} waiting http connections is at {{ $value }}\",\"summary\":\"Instance {{ $labels.instance }} has more than 2 waiting connections per minute\"},\"expr\":\"kong_nginx_http_current_connections{state=\\\"waiting\\\"} \\u003e 2\",\"for\":\"1m\",\"labels\":{\"severity\":\"critical\"},\"alert\":\"KongWaitingConnections\"}]",
           "prometheus.rules.1.json": "{\"alert\":\"TransactionsHSDPPG\",\"annotations\":{\"description\":\"{{ $labels.instance }}, this is just a test alert\",\"summary\":\"Instance {{ $labels.instance }} has high transaction rate\"},\"expr\":\"irate(pg_stat_database_xact_commit{datname=~\\\"hsdp_pg\\\"}[5m]) \\u003e 8\",\"for\":\"1m\",\"labels\":{\"severity\":\"critical\"}}",
           "prometheus.exporter.relabel_configs": "[{\"source_labels\": [\"__name__\"], \"regex\":\"^(go|process).*$\", \"action\": \"drop\"}]"
@@ -825,6 +827,7 @@ func TestReconcile(t *testing.T) {
 	assert.Equal(t, cfg.ScrapeConfigs[2].ServiceDiscoveryConfig.StaticConfigs[0].Labels["cf_org_name"], "test-org")
 	assert.Equal(t, cfg.ScrapeConfigs[2].ServiceDiscoveryConfig.StaticConfigs[0].Labels["cf_space_name"], "test-space")
 	assert.Len(t, cfg.ScrapeConfigs[2].RelabelConfigs, 1)
+	assert.Equal(t, promconfig.Duration(30*time.Second), cfg.ScrapeConfigs[2].ScrapeInterval)
 }
 
 func TestWithSpaces(t *testing.T) {

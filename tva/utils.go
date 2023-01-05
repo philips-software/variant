@@ -6,10 +6,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/spf13/viper"
-	"io/ioutil"
+	"io"
 	"strconv"
 	"strings"
+
+	"github.com/spf13/viper"
 
 	"code.cloudfoundry.org/cfnetworking-cli-api/cfnetworking/cfnetv1"
 	"code.cloudfoundry.org/cli/api/cloudcontroller/ccerror"
@@ -107,7 +108,7 @@ func MetadataRetrieve(client *clients.RawClient, guid string) (Metadata, error) 
 		}
 	}()
 
-	b, err := ioutil.ReadAll(resp.Body)
+	b, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return Metadata{}, err
 	}
@@ -229,6 +230,7 @@ func GeneratePoliciesAndScrapeConfigs(session *clients.Session, internalDomainID
 	if name := metadata.Annotations[AnnotationExporterJobName]; name != nil {
 		jobName = *name
 	}
+
 	appGUID := strings.Split(app.GUID, "-")[0]
 	jobName = fmt.Sprintf("%s-%s", jobName, appGUID) // Ensure uniqueness across spaces
 
@@ -267,6 +269,11 @@ func GeneratePoliciesAndScrapeConfigs(session *clients.Session, internalDomainID
 				},
 			},
 		},
+	}
+	if scrapeInterval := metadata.Annotations[AnnotationExporterScrapInterval]; scrapeInterval != nil {
+		if err := scrapeConfig.ScrapeInterval.Set(*scrapeInterval); err != nil {
+			return policies, configs, err
+		}
 	}
 	if MetricsEndpointBasicAuthEnabled() {
 		scrapeConfig.HTTPClientConfig = promconfig.HTTPClientConfig{

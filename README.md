@@ -33,6 +33,7 @@ resource "cloudfoundry_app" "kong" {
   annotations = {
     "prometheus.exporter.port" = "8001"
     "prometheus.exporter.path" = "/metrics"
+    "prometheus.exporter.scrape_interval" = "30s"
     "prometheus.rules.json" = jsonencode([
       {
         alert = "KongWaitingConnections"
@@ -105,6 +106,7 @@ Annotations contain the configurations for metrics and rule definitions
 |----------------------------------------|--------------------------------------|------------|
 | `prometheus.exporter.port`             | The metrics ports to use             | `9090`     |
 | `prometheus.exporter.path`             | The metrics path to use              | `/metrics` |
+| `prometheus.exporter.scrape_interval`  | The scrape interval for this app     |            |
 | `prometheus.exporter.instance_name`    | The instance name to use (optional)  |            |
  | `prometheues.exporter.relabel_configs` | Relabel configs for this application |            |
 | `promethues.targets.port`              | The targets port to use (optional)   |            |
