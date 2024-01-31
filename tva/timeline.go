@@ -14,13 +14,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/patrickmn/go-cache"
+
 	"code.cloudfoundry.org/cfnetworking-cli-api/cfnetworking/cfnetv1"
 	"code.cloudfoundry.org/cli/api/cloudcontroller/ccv3"
 	"code.cloudfoundry.org/cli/resources"
 	"code.cloudfoundry.org/cli/types"
 	"github.com/antonmedv/expr"
 	clients "github.com/cloudfoundry-community/go-cf-clients-helper"
-	"github.com/patrickmn/go-cache"
 	"github.com/percona/promconfig"
 	"github.com/percona/promconfig/rules"
 	"github.com/prometheus/client_golang/api"
@@ -65,6 +66,7 @@ type Timeline struct {
 	sync.Mutex
 	*clients.Session
 	*cache.Cache
+
 	v1API         v1.API
 	targets       []promconfig.ScrapeConfig
 	Selectors     []string
@@ -212,25 +214,40 @@ func (t *Timeline) saveAndReload(newConfig string, files ruleFiles) error {
 	configData = configData + newConfig
 	// Check if we actually need to reload
 	md5Hash := GetMD5Hash(configData)
-	if hash, ok := t.Cache.Get(ConfigHashKey); ok {
-		if strings.EqualFold(hash.(string), md5Hash) { // No change!
+
+	if data, ok := t.Cache.Get(ConfigHashKey); ok {
+		if strings.EqualFold(data.(string), md5Hash) { // No change!
 			if t.metrics != nil {
 				t.metrics.IncConfigCacheHits()
 			}
 			return nil
 		}
 	}
-	t.Cache.Set(ConfigHashKey, md5Hash, 0)
+	t.Cache.Set(ConfigHashKey, md5Hash, cache.NoExpiration)
 
-	if err := os.WriteFile(t.config.PrometheusConfig, []byte(newConfig), 0644); err != nil {
-		return fmt.Errorf("save config: %w", err)
-	}
-	if !t.reload { // Prometheus/Thanos uses inotify
-		return nil
-	}
 	if t.metrics != nil {
 		t.metrics.IncConfigLoads()
 	}
+
+	// Save backup
+	backupFile := fmt.Sprintf("%s.%d", t.config.PrometheusConfig, time.Now().Unix())
+	oldData, err := os.ReadFile(t.config.PrometheusConfig)
+	if err != nil {
+		return fmt.Errorf("read old config: %w", err)
+	}
+	if err := os.WriteFile(backupFile, oldData, 0644); err != nil {
+		return fmt.Errorf("save backup %s: %w", backupFile, err)
+	}
+	// Write updated config
+	if err := os.WriteFile(t.config.PrometheusConfig, []byte(newConfig), 0644); err != nil {
+		return fmt.Errorf("save config: %w", err)
+	}
+	// Check reload
+	if !t.reload { // Prometheus/Thanos uses inotify
+		return nil
+	}
+
+	// Reload
 	resp, err := http.Post(t.config.ThanosURL+"/-/reload", "application/json", nil)
 	if err != nil {
 		return fmt.Errorf("reload config: %w", err)
