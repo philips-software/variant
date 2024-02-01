@@ -8,4 +8,5 @@ type Metrics interface {
 	IncErrorIncursions()
 	IncConfigLoads()
 	IncConfigCacheHits()
+	IncOutOfBoundChanges()
 }

@@ -30,9 +30,14 @@ type metrics struct {
 	ErrorIncursions        prometheus.Counter
 	ConfigLoads            prometheus.Counter
 	ConfigCacheHits        prometheus.Counter
+	OutOfBoundChanges      prometheus.Counter
 }
 
 var _ tva.Metrics = (*metrics)(nil)
+
+func (m metrics) IncOutOfBoundChanges() {
+	m.OutOfBoundChanges.Inc()
+}
 
 func (m metrics) SetScrapeInterval(v float64) {
 	m.ScrapeInterval.Set(v)
@@ -161,6 +166,10 @@ func main() {
 		ConfigLoads: promauto.NewCounter(prometheus.CounterOpts{
 			Name: "variant_config_loads_total",
 			Help: "Total number of Prometheus config reload requests",
+		}),
+		OutOfBoundChanges: promauto.NewCounter(prometheus.CounterOpts{
+			Name: "variant_out_of_bound_changes_total",
+			Help: "Total number of out of bound changes detected",
 		}),
 	}
 
