@@ -215,28 +215,28 @@ func (t *Timeline) saveAndReload(newConfig string, files ruleFiles) error {
 
 	// Generate hashes
 	md5Hash := GetMD5Hash(configData)
-	startHash := GetMD5Hash(t.startConfig)
+	newHash := GetMD5Hash(newConfig)
 
 	// Read disk content
 	diskData, _ := os.ReadFile(t.config.PrometheusConfig)
 	diskHash := GetMD5Hash(string(diskData))
 
-	if !strings.EqualFold(diskHash, md5Hash) { // Out of sync
-		if !strings.EqualFold(startHash, md5Hash) { // Out of bound change
+	_, existing := t.Cache.Get(ConfigHashKey)
+
+	if strings.EqualFold(diskHash, newHash) { // Synced
+		if existing {
 			if t.metrics != nil {
-				t.metrics.IncOutOfBoundChanges()
+				t.metrics.IncConfigCacheHits()
 			}
 		}
-	} else { // TODO: theoretically we can forego this whole part since we already know the disk state
-		if data, ok := t.Cache.Get(ConfigHashKey); ok {
-			if strings.EqualFold(data.(string), md5Hash) { // No change!
-				if t.metrics != nil {
-					t.metrics.IncConfigCacheHits()
-				}
-				return nil
-			}
+		return nil
+	}
+	if existing { // Out of bound change
+		if t.metrics != nil {
+			t.metrics.IncOutOfBoundChanges()
 		}
 	}
+
 	t.Cache.Set(ConfigHashKey, md5Hash, cache.NoExpiration)
 
 	if t.metrics != nil {
