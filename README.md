@@ -3,6 +3,10 @@
 A sidecar for [Prometheus / Thanos](https://github.com/philips-labs/terraform-cloudfoundry-thanos) to discover scrape endpoints and rules.
 It also manages the required CF network policies to support scraping via `apps.internal` routes. Finally, it can autoscale your CF applications based on arbitrary PromQL statements!
 
+## Disclaimer
+
+This project is not endorsed or supported by HSDP. Use at your own risk.
+
 ## Internals
 Variant uses the Cloud foundry API to:
 - Discover metrics endpoints and scrape targets through CF labels / annotations
