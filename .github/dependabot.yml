@@ -13,10 +13,6 @@ updates:
     directory: "/"
     schedule:
       interval: "daily"      
-  - package-ecosystem: "gomod"
-    directory: "/docker/sd"
-    schedule:
-      interval: "daily"
   - package-ecosystem: "docker"
     directory: "/"
     schedule:
