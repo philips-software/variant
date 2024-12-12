@@ -19,7 +19,7 @@ require (
 	github.com/cloudfoundry-community/go-cf-clients-helper v1.0.3
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/percona/promconfig v0.2.1
-	github.com/prometheus/client_golang v1.20.4
+	github.com/prometheus/client_golang v1.20.5
 	github.com/prometheus/common v0.59.1
 	github.com/spf13/viper v1.19.0
 	github.com/stretchr/testify v1.9.0
