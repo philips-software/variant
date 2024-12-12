@@ -20,9 +20,9 @@ require (
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/percona/promconfig v0.2.1
 	github.com/prometheus/client_golang v1.20.5
-	github.com/prometheus/common v0.59.1
+	github.com/prometheus/common v0.61.0
 	github.com/spf13/viper v1.19.0
-	github.com/stretchr/testify v1.9.0
+	github.com/stretchr/testify v1.10.0
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -87,7 +87,7 @@ require (
 	golang.org/x/sys v0.28.0 // indirect
 	golang.org/x/term v0.27.0 // indirect
 	golang.org/x/text v0.21.0 // indirect
-	google.golang.org/protobuf v1.34.2 // indirect
+	google.golang.org/protobuf v1.35.2 // indirect
 	gopkg.in/cheggaaa/pb.v1 v1.0.28 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 )
