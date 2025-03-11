@@ -1,3 +1,5 @@
+# DEPRECATED: please use https://github.com/dip-software/variant
+
 # Variant
 
 A sidecar for [Prometheus / Thanos](https://github.com/philips-labs/terraform-cloudfoundry-thanos) to discover scrape endpoints and rules.
